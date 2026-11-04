@@ -84,7 +84,7 @@ export async function choosePaymentAction(token: string, form: FormData) {
   redirect(`${path}#pay`);
 }
 
-const MAX = 5 * 1024 * 1024;
+const MAX = 4 * 1024 * 1024; // Vercel rejects request bodies over 4.5 MB
 function sniff(buf: Buffer): string | null {
   if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
   if (buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "image/png";
@@ -103,7 +103,7 @@ export async function uploadProofAction(token: string, form: FormData) {
     let blob: { mime: string; data: Buffer } | null = null;
     if (file && typeof file === "object" && "arrayBuffer" in file && (file as File).size > 0) {
       const f = file as File;
-      if (f.size > MAX) throw new RuleError("FILE_SIZE", "The screenshot must be 5 MB or smaller");
+      if (f.size > MAX) throw new RuleError("FILE_SIZE", "The screenshot must be 4 MB or smaller");
       const data = Buffer.from(await f.arrayBuffer());
       const mime = sniff(data);
       if (!mime) throw new RuleError("FILE_TYPE", "Use a JPG, PNG or PDF file");

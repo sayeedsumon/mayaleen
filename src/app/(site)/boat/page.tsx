@@ -1,4 +1,5 @@
-import { Icon } from "@/components/ui";
+import Image from "next/image";
+import { getSitePhotos } from "@/server/photos";
 import { DICT, money, num, type Lang } from "@/lib/i18n";
 import { loadPricingConfig } from "@/server/config";
 import { prisma } from "@/server/db";
@@ -46,6 +47,7 @@ const COPY: Record<Lang, {
 
 export default async function BoatPage() {
   const lang = await getLang();
+  const photos = await getSitePhotos();
   const t = DICT[lang];
   const k = COPY[lang];
   const [cfg, types] = await Promise.all([
@@ -57,7 +59,6 @@ export default async function BoatPage() {
   const eyebrow = "text-[13px] font-semibold uppercase tracking-[1.2px] text-lake";
   const h2 = `mt-1.5 text-[32px] font-medium leading-tight md:text-[40px] ${display}`;
   const cap = Math.min(cfg.settings.capacityCap, types.flatMap((x) => x.cabins).reduce((n, c) => n + c.capacity, 0));
-  const panel = (dark = false) => ({ background: dark ? "repeating-linear-gradient(135deg,#123E3A 0 12px,#0F3633 12px 24px)" : "repeating-linear-gradient(135deg,#E9E5DC 0 12px,#E2DDD2 12px 24px)" });
   const tl = (items: [string, string][]) => items.map(([time, what], i) => (
     <div key={i} className="grid grid-cols-[64px_16px_minmax(0,1fr)] gap-x-3.5">
       <span className="pb-3.5 pt-0.5 text-sm font-semibold text-lake">{time}</span>
@@ -74,16 +75,16 @@ export default async function BoatPage() {
           <h1 id="boat-h" className={`mt-2 text-[38px] font-medium leading-[1.08] md:text-[54px] ${display}`}>{k.title}</h1>
           <p className="mt-4 text-[17px] leading-[27px] text-ink-2">{k.lead}</p>
         </div>
-        <div aria-hidden="true" className="flex min-h-[280px] min-w-[300px] flex-[1_1_520px] items-center justify-center rounded-2xl text-[#C9C2B4] md:min-h-[380px]" style={panel()}><Icon name="boat" size={56} /></div>
+        <div className="relative min-h-[280px] min-w-[300px] flex-[1_1_520px] overflow-hidden rounded-2xl bg-[#E9E5DC] md:min-h-[380px]"><Image src={photos.boat.src} alt={photos.boat.alt} fill priority sizes="(min-width: 768px) 55vw, 100vw" className="object-cover" /></div>
       </section>
 
       <section aria-labelledby="cab-h" className="mx-auto mt-20 max-w-[1200px] px-4 md:px-8">
         <div className={eyebrow}>{k.cabins}</div>
         <h2 id="cab-h" className={h2}>{k.cabinsTitle}</h2>
         <div className="mt-7 grid grid-cols-1 gap-5 md:grid-cols-3">
-          {types.filter((x) => x.cabins.length).map((ty) => (
+          {types.filter((x) => x.cabins.length).map((ty, i) => (
             <article key={ty.id} className="card overflow-hidden">
-              <div aria-hidden="true" className="h-[200px]" style={panel()} />
+              <div className="relative h-[220px] bg-[#E9E5DC]"><Image src={photos.cabins[i % photos.cabins.length].src} alt={photos.cabins[i % photos.cabins.length].alt} fill sizes="(min-width: 768px) 33vw, 100vw" className="object-cover" style={{ objectPosition: photos.cabins[i % photos.cabins.length].pos ?? "50% 35%" }} /></div>
               <div className="p-5">
                 <h3 className="text-[19px] font-semibold">{ty.name}</h3>
                 <p className="mt-1.5 text-sm leading-[21px] text-ink-2">

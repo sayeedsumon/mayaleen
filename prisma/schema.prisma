@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider  = "postgresql"
   url       = env("DATABASE_URL") // pooled connection at runtime
   directUrl = env("DIRECT_URL") // direct connection for schema changes (Neon)
 }
@@ -82,16 +82,16 @@ enum PaymentStatus {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  name      String
-  mobile    String   @unique
-  email     String?  @unique
-  role      Role
-  pwHash    String
+  id         String   @id @default(cuid())
+  name       String
+  mobile     String   @unique
+  email      String?  @unique
+  role       Role
+  pwHash     String
   totpSecret String?
-  twoFaOn   Boolean  @default(false)
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
+  twoFaOn    Boolean  @default(false)
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
 }
 
 model CabinType {
@@ -104,37 +104,37 @@ model CabinType {
 }
 
 model Cabin {
-  id          String    @id @default(cuid())
-  name        String    @unique
+  id          String       @id @default(cuid())
+  name        String       @unique
   cabinTypeId String
-  cabinType   CabinType @relation(fields: [cabinTypeId], references: [id])
+  cabinType   CabinType    @relation(fields: [cabinTypeId], references: [id])
   capacity    Int
-  active      Boolean   @default(true)
-  sortOrder   Int       @default(0)
+  active      Boolean      @default(true)
+  sortOrder   Int          @default(0)
   photos      String[]
   nights      CabinNight[]
 }
 
 // Single-row, versioned settings (BR-10/11/13/14, FR-A24).
 model BoatSetting {
-  id                   Int      @id @default(autoincrement())
-  effectiveFrom        DateTime @default(now())
-  capacityCap          Int      @default(16)
-  approvalWindowHours  Int      @default(12)
-  paymentWindowHours   Int      @default(24)
-  balanceLeadHours     Int      @default(24)
-  cutoffDays           Int      @default(2)
-  horizonMonths        Int      @default(12)
-  advancePct           Int      @default(50)
-  minBillablePerCabin  Int      @default(0) // 0 = off
-  groupTierEnabled     Boolean  @default(false)
-  groupTierMinGuests   Int      @default(0)
-  groupTierRate        Int      @default(6800)
+  id                  Int      @id @default(autoincrement())
+  effectiveFrom       DateTime @default(now())
+  capacityCap         Int      @default(16)
+  approvalWindowHours Int      @default(12)
+  paymentWindowHours  Int      @default(24)
+  balanceLeadHours    Int      @default(24)
+  cutoffDays          Int      @default(2)
+  horizonMonths       Int      @default(12)
+  advancePct          Int      @default(50)
+  minBillablePerCabin Int      @default(0) // 0 = off
+  groupTierEnabled    Boolean  @default(false)
+  groupTierMinGuests  Int      @default(0)
+  groupTierRate       Int      @default(6800)
 }
 
 model AgeBand {
-  id         String @id @default(cuid())
-  name       String @unique
+  id         String  @id @default(cuid())
+  name       String  @unique
   minAge     Int
   maxAge     Int
   pctOfAdult Int // 0..100
@@ -191,28 +191,28 @@ model Guest {
 }
 
 model Booking {
-  id            String        @id @default(cuid())
-  reference     String        @unique // e.g. MYL-261204-07
-  type          BookingType
-  tripDate      DateTime      @db.Date
-  status        BookingStatus @default(PENDING_APPROVAL)
-  source        BookingSource @default(WEBSITE)
-  paymentOption PaymentOption @default(FULL)
-  holdExpiresAt DateTime?
-  paymentDueAt  DateTime?
-  balanceDueAt  DateTime?
-  leadGuestId   String
-  leadGuest     Guest         @relation(fields: [leadGuestId], references: [id])
-  language      String        @default("en")
-  notes         String?
-  accessToken   String        @unique // private "My Booking" link
-  checkedInAt   DateTime?
-  checkedOutAt  DateTime?
-  checkoutNotes String?
-  cancelRequestedAt DateTime?
+  id                  String        @id @default(cuid())
+  reference           String        @unique // e.g. MYL-261204-07
+  type                BookingType
+  tripDate            DateTime      @db.Date
+  status              BookingStatus @default(PENDING_APPROVAL)
+  source              BookingSource @default(WEBSITE)
+  paymentOption       PaymentOption @default(FULL)
+  holdExpiresAt       DateTime?
+  paymentDueAt        DateTime?
+  balanceDueAt        DateTime?
+  leadGuestId         String
+  leadGuest           Guest         @relation(fields: [leadGuestId], references: [id])
+  language            String        @default("en")
+  notes               String?
+  accessToken         String        @unique // private "My Booking" link
+  checkedInAt         DateTime?
+  checkedOutAt        DateTime?
+  checkoutNotes       String?
+  cancelRequestedAt   DateTime?
   cancelRequestReason String?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
 
   guests   BookingGuest[]
   nights   CabinNight[]
@@ -223,15 +223,15 @@ model Booking {
 }
 
 model BookingGuest {
-  id            String   @id @default(cuid())
+  id            String  @id @default(cuid())
   bookingId     String
-  booking       Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  booking       Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   name          String?
   ageBandId     String?
   ageBandName   String
   nidOrPassport String?
   cabinName     String?
-  isLead        Boolean  @default(false)
+  isLead        Boolean @default(false)
 }
 
 // One row per cabin per trip date. UNIQUE(cabin, date) makes double booking
@@ -272,20 +272,20 @@ model BankAccount {
 }
 
 model Invoice {
-  id         String        @id @default(cuid())
-  number     String // same number across revisions
-  bookingId  String
-  booking    Booking       @relation(fields: [bookingId], references: [id])
-  revision   Int           @default(1)
-  total      Int
-  dueNow     Int
-  dueNowAt   DateTime
-  balance    Int
-  balanceAt  DateTime?
-  status     InvoiceStatus @default(ISSUED)
+  id           String        @id @default(cuid())
+  number       String // same number across revisions
+  bookingId    String
+  booking      Booking       @relation(fields: [bookingId], references: [id])
+  revision     Int           @default(1)
+  total        Int
+  dueNow       Int
+  dueNowAt     DateTime
+  balance      Int
+  balanceAt    DateTime?
+  status       InvoiceStatus @default(ISSUED)
   bankSnapshot Json
-  createdAt  DateTime      @default(now())
-  payments   Payment[]
+  createdAt    DateTime      @default(now())
+  payments     Payment[]
 
   @@unique([number, revision])
 }
@@ -376,7 +376,26 @@ model Message {
   createdAt DateTime      @default(now())
   sentAt    DateTime?
 
+  @@unique([bookingId, event, channel, to])
   @@index([bookingId])
   @@index([status, createdAt])
-  @@unique([bookingId, event, channel, to])
+}
+
+/// Website photos uploaded by the owner (Settings › Photos). Public by design.
+model SitePhoto {
+  id        String   @id @default(cuid())
+  /// HERO (home top), BOAT (boat page top), CABIN (cabin cards), GALLERY (home grid)
+  place     String   @default("GALLERY")
+  alt       String   @default("")
+  /// Which part stays visible when cropped: top | center | bottom
+  focus     String   @default("center")
+  sort      Int      @default(0)
+  mime      String
+  width     Int
+  height    Int
+  size      Int
+  data      Bytes
+  createdAt DateTime @default(now())
+
+  @@index([place, sort])
 }

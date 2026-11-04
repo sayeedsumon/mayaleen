@@ -1,22 +1,24 @@
+import Image from "next/image";
 import { Icon } from "@/components/ui";
 import { toDhakaDate, addDays } from "@/domain";
 import { DICT, fill, money } from "@/lib/i18n";
 import { loadPricingConfig } from "@/server/config";
 import { prisma } from "@/server/db";
+import { getSitePhotos, type SitePic } from "@/server/photos";
 import { getContent, getLang } from "@/server/site-content";
 
-function Photo({ className = "", dark = false }: { className?: string; dark?: boolean }) {
-  // Placeholder until the owner adds photos: a quiet lake-toned panel.
+function Photo({ pic, className = "", priority = false, sizes = "(min-width: 768px) 50vw, 100vw" }:
+  { pic: SitePic; className?: string; priority?: boolean; sizes?: string }) {
   return (
-    <div aria-hidden="true" className={`flex items-center justify-center rounded-2xl ${dark ? "text-[#2E6A64]" : "text-[#C9C2B4]"} ${className}`}
-      style={{ background: dark ? "repeating-linear-gradient(135deg,#123E3A 0 12px,#0F3633 12px 24px)" : "repeating-linear-gradient(135deg,#E9E5DC 0 12px,#E2DDD2 12px 24px)" }}>
-      <Icon name="boat" size={48} />
+    <div className={`relative overflow-hidden rounded-2xl bg-[#E9E5DC] ${className}`}>
+      <Image src={pic.src} alt={pic.alt} fill priority={priority} sizes={sizes} className="object-cover" style={{ objectPosition: pic.pos ?? "center" }} />
     </div>
   );
 }
 
 export default async function Home() {
   const lang = await getLang();
+  const photos = await getSitePhotos();
   const t = DICT[lang];
   const [c, cfg] = await Promise.all([getContent(lang), loadPricingConfig(prisma)]);
   const r = cfg.rates;
@@ -47,7 +49,7 @@ export default async function Home() {
               <a href="/boat" className="inline-flex h-12 items-center rounded-xl border border-[#3E6B66] px-5 text-[15px] font-semibold text-white no-underline hover:text-white">{t.hero.tour}</a>
             </div>
           </div>
-          <Photo dark className="min-h-[260px] min-w-[300px] flex-[1_1_480px] md:min-h-[400px]" />
+          <Photo pic={photos.hero} priority className="min-h-[320px] min-w-[300px] flex-[1_1_480px] md:min-h-[460px]" />
         </div>
       </section>
 
@@ -121,7 +123,9 @@ export default async function Home() {
 
       <section aria-label="Photos" className="mx-auto mt-24 max-w-[1200px] px-4 md:px-8">
         <div className="grid auto-rows-[160px] grid-cols-2 gap-3 md:auto-rows-[180px] md:grid-cols-4">
-          <Photo className="col-span-2 row-span-2" /><Photo /><Photo /><Photo /><Photo />
+          {photos.gallery.map((pic, i) => (
+            <Photo key={pic.src} pic={pic} className={i === 0 && photos.gallery.length >= 5 ? "col-span-2 row-span-2" : ""} sizes={i === 0 && photos.gallery.length >= 5 ? "(min-width: 768px) 50vw, 100vw" : "(min-width: 768px) 25vw, 50vw"} />
+          ))}
         </div>
       </section>
 
@@ -167,7 +171,7 @@ export default async function Home() {
               {wa && <a href={`https://wa.me/${wa}`} className="btn-ghost h-12">{t.reach.whatsapp}</a>}
             </div>
           </div>
-          <Photo className="min-h-[240px] min-w-[300px] flex-[1_1_420px] rounded-none" />
+          <Photo pic={photos.reach} className="min-h-[260px] min-w-[300px] flex-[1_1_420px] rounded-none" />
         </div>
       </section>
     </main>
