@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@/server/db";
+import { resetBookings } from "./helpers";
 import { createBooking, expireHolds, SlotTakenError } from "@/server/booking-service";
 
 const NOW = new Date("2026-12-01T06:00:00Z");
@@ -10,14 +11,7 @@ async function cabinIds() {
   return (await prisma.cabin.findMany({ orderBy: { sortOrder: "asc" } })).map((c) => c.id);
 }
 
-beforeEach(async () => {
-  await prisma.auditLog.deleteMany();
-  await prisma.cabinNight.deleteMany();
-  await prisma.bookingLine.deleteMany();
-  await prisma.bookingGuest.deleteMany();
-  await prisma.booking.deleteMany();
-  await prisma.dateBlock.deleteMany();
-});
+beforeEach(resetBookings);
 
 describe("createBooking", () => {
   it("creates a shared booking, holds cabins, prices it, sets a 12h hold", async () => {
