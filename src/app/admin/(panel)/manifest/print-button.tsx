@@ -1,0 +1,11 @@
+"use client";
+
+import { Icon } from "@/components/ui";
+
+export function PrintButton({ label = "Print" }: { label?: string }) {
+  return (
+    <button type="button" onClick={() => window.print()} className="btn">
+      <Icon name="print" size={16} />{label}
+    </button>
+  );
+}

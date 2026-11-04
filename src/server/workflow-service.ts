@@ -44,7 +44,7 @@ export async function paidAmount(tx: Tx, bookingId: string): Promise<number> {
 async function nextInvoiceNumber(tx: Tx, now: Date): Promise<string> {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('invoice-number'))`;
   const year = toDhakaDate(now).slice(0, 4);
-  const n = await tx.invoice.count({ where: { number: { startsWith: `INV-${year}-` } } });
+  const n = await tx.invoice.count({ where: { number: { startsWith: `INV-${year}-` }, revision: 1 } });
   return `INV-${year}-${String(n + 1).padStart(4, "0")}`;
 }
 
@@ -63,7 +63,7 @@ async function issueInvoice(
   if (prev) await tx.invoice.update({ where: { id: prev.id }, data: { status: "SUPERSEDED" } });
   return tx.invoice.create({
     data: {
-      number: await nextInvoiceNumber(tx, opts.now),
+      number: prev?.number ?? (await nextInvoiceNumber(tx, opts.now)),
       bookingId: booking.id,
       revision: (prev?.revision ?? 0) + 1,
       total, dueNow, dueNowAt: opts.dueNowAt, balance,
@@ -349,8 +349,9 @@ export async function setFoodPackages(bookingId: string, foodGuests: GuestCount[
 
 export async function checkIn(
   bookingId: string, actor: string,
-  adults: { name: string; nidOrPassport: string }[],
+  adults: { name: string; nidOrPassport: string; cabin?: string }[],
   now = new Date(),
+  opts: { emergencyContact?: string } = {},
 ) {
   return prisma.$transaction(async (tx) => {
     const b = await lockBooking(tx, bookingId);
@@ -363,15 +364,87 @@ export async function checkIn(
     await tx.bookingGuest.deleteMany({ where: { bookingId, ageBandName: { in: adultBands } } });
     await tx.bookingGuest.createMany({
       data: adults.map((a, i) => ({
-        bookingId, name: a.name, nidOrPassport: encryptField(a.nidOrPassport.trim()), ageBandName: adultBands[0] ?? "Adult", isLead: i === 0,
+        bookingId, name: a.name, nidOrPassport: encryptField(a.nidOrPassport.trim()), cabinName: a.cabin || null,
+        ageBandName: adultBands[0] ?? "Adult", isLead: i === 0,
       })),
     });
-    return applyEvent(tx, bookingId, "CHECK_IN", actor, {}, `Checked in ${adults.length} adults`);
+    if (opts.emergencyContact?.trim()) {
+      await tx.guest.update({ where: { id: b.leadGuestId }, data: { emergencyContact: opts.emergencyContact.trim() } });
+    }
+    return applyEvent(tx, bookingId, "CHECK_IN", actor, { checkedInAt: now }, `Checked in ${adults.length} adults`);
   });
 }
 
-export async function checkOut(bookingId: string, actor: string, notes?: string) {
-  return prisma.$transaction((tx) => applyEvent(tx, bookingId, "CHECK_OUT", actor, notes ? { notes } : {}));
+export async function checkOut(bookingId: string, actor: string, notes?: string, now = new Date()) {
+  return prisma.$transaction((tx) =>
+    applyEvent(tx, bookingId, "CHECK_OUT", actor, { checkedOutAt: now, checkoutNotes: notes?.trim() || null }),
+  );
+}
+
+// ---------- Edit an invoice (FR-A11): change lines, terms, deadlines ----------
+
+export interface InvoiceLineInput {
+  kind: "PACKAGE" | "FOOD" | "SURCHARGE" | "DISCOUNT";
+  description: string;
+  qty: number;
+  unitPrice: number; // positive number; DISCOUNT lines are subtracted
+}
+
+export async function reviseInvoice(
+  bookingId: string,
+  input: { lines: InvoiceLineInput[]; paymentOption: PaymentOption; dueNowAt?: Date; balanceAt?: Date | null; note?: string },
+  actor: string,
+  now = new Date(),
+) {
+  if (input.lines.length === 0) throw new RuleError("NO_LINES", "An invoice needs at least one line");
+  for (const l of input.lines) {
+    if (!l.description.trim()) throw new RuleError("LINE_TEXT", "Every line needs a description");
+    if (!(l.qty > 0) || !Number.isInteger(l.qty)) throw new RuleError("LINE_QTY", "Quantities must be whole numbers above 0");
+    if (!(l.unitPrice >= 0)) throw new RuleError("LINE_PRICE", "Prices cannot be negative");
+    if (l.kind === "DISCOUNT" && !l.description.replace(/^discount:?/i, "").trim()) {
+      throw new RuleError("DISCOUNT_REASON", "A discount needs a reason");
+    }
+  }
+  return prisma.$transaction(async (tx) => {
+    const b = await lockBooking(tx, bookingId);
+    if (["REJECTED", "EXPIRED", "CANCELLED", "NO_SHOW", "COMPLETED"].includes(b.status)) {
+      throw new RuleError("BAD_STATE", "This booking is closed");
+    }
+    if (b.type === "SHARED" && input.lines.some((l) => l.kind === "FOOD")) {
+      throw new RuleError("SHARED_FOOD", "Food is included on shared bookings (BR-08)");
+    }
+    const rows = input.lines.map((l) => {
+      const sign = l.kind === "DISCOUNT" ? -1 : 1;
+      const unit = sign * Math.round(l.unitPrice);
+      return { bookingId, kind: l.kind, description: l.description.trim(), qty: l.qty, unitPrice: unit, total: unit * l.qty };
+    });
+    const total = rows.reduce((n, r) => n + r.total, 0);
+    if (total < 0) throw new RuleError("NEGATIVE_TOTAL", "Discounts cannot exceed the total");
+    const before = b.invoices[0]?.total ?? null;
+    await tx.bookingLine.deleteMany({ where: { bookingId } });
+    await tx.bookingLine.createMany({ data: rows });
+    await tx.booking.update({ where: { id: bookingId }, data: { paymentOption: input.paymentOption } });
+    const fresh = await lockBooking(tx, bookingId);
+    const cfg = await loadPricingConfig(tx, now);
+    const dueNowAt = input.dueNowAt ?? fresh.invoices[0]?.dueNowAt ?? paymentDeadline(now, cfg.settings);
+    let inv = await issueInvoice(tx, fresh, { now, dueNowAt });
+    if (input.balanceAt !== undefined && inv.balance > 0) {
+      inv = await tx.invoice.update({ where: { id: inv.id }, data: { balanceAt: input.balanceAt } });
+    }
+    if (input.dueNowAt && fresh.status === "AWAITING_PAYMENT") {
+      await tx.booking.update({ where: { id: bookingId }, data: { holdExpiresAt: input.dueNowAt, paymentDueAt: input.dueNowAt } });
+    }
+    const paid = await paidAmount(tx, bookingId);
+    if (fresh.status === "CONFIRMED_PAID" && paid < inv.total) {
+      await tx.booking.update({ where: { id: bookingId }, data: { status: "CONFIRMED_BALANCE_DUE" } });
+    } else if (fresh.status === "CONFIRMED_BALANCE_DUE" && paid >= inv.total) {
+      await tx.booking.update({ where: { id: bookingId }, data: { status: "CONFIRMED_PAID" } });
+    }
+    await audit(tx, bookingId, "INVOICE_REVISED", actor, {
+      before: { total: before }, after: { total: inv.total, revision: inv.revision }, reason: input.note,
+    });
+    return inv;
+  });
 }
 
 // ---------- Change a booking (FR-A08) ----------

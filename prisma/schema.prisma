@@ -183,6 +183,7 @@ model Guest {
   nid              String? // encrypted (AES-256-GCM), see src/server/crypto.ts
   nidHash          String? // keyed blind index for exact-match search
   emergencyContact String?
+  notes            String?
   bookings         Booking[]
 
   @@index([mobile])
@@ -205,6 +206,9 @@ model Booking {
   language      String        @default("en")
   notes         String?
   accessToken   String        @unique // private "My Booking" link
+  checkedInAt   DateTime?
+  checkedOutAt  DateTime?
+  checkoutNotes String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
@@ -224,6 +228,7 @@ model BookingGuest {
   ageBandId     String?
   ageBandName   String
   nidOrPassport String?
+  cabinName     String?
   isLead        Boolean  @default(false)
 }
 
@@ -266,7 +271,7 @@ model BankAccount {
 
 model Invoice {
   id         String        @id @default(cuid())
-  number     String        @unique
+  number     String // same number across revisions
   bookingId  String
   booking    Booking       @relation(fields: [bookingId], references: [id])
   revision   Int           @default(1)
@@ -279,6 +284,8 @@ model Invoice {
   bankSnapshot Json
   createdAt  DateTime      @default(now())
   payments   Payment[]
+
+  @@unique([number, revision])
 }
 
 model Payment {
@@ -314,4 +321,11 @@ model AuditLog {
   at       DateTime @default(now())
 
   @@index([entity, entityId])
+}
+
+// Sign-in lockout kept in the database so it works on serverless hosts.
+model LoginAttempt {
+  key   String   @id
+  count Int      @default(0)
+  until DateTime
 }

@@ -30,6 +30,7 @@ export interface CreateBookingInput {
   guestsPerCabin?: Record<string, number>;
   /** FULL_BOAT only */
   foodGuests?: GuestCount[];
+  discount?: { amount: number; reason: string };
   now?: Date;
 }
 
@@ -58,6 +59,8 @@ export interface PlanInput {
   cabinIds?: string[];
   guestsPerCabin?: Record<string, number>;
   foodGuests?: GuestCount[];
+  /** Staff-only price reduction; the reason prints on the invoice (FR-A11). */
+  discount?: { amount: number; reason: string };
 }
 
 /**
@@ -98,13 +101,14 @@ export async function evaluate(tx: Tx, input: PlanInput, now: Date, today: ISODa
       date: input.tripDate,
       cabins: chosen.map((c) => ({ ...c, guests: input.guestsPerCabin![c.id] })),
       guests: input.guests,
+      discount: input.discount,
     });
     rows = chosen.map((c) => ({ cabinId: c.id, guests: input.guestsPerCabin![c.id] }));
   } else {
     const chosen = validateFullBoat(
       cabins, avail, { guests: input.guests, foodGuests: input.foodGuests ?? [] }, cfg.settings,
     );
-    quote = quoteFullBoat(cfg, { date: input.tripDate, foodGuests: input.foodGuests ?? [] });
+    quote = quoteFullBoat(cfg, { date: input.tripDate, foodGuests: input.foodGuests ?? [], discount: input.discount });
     rows = chosen.map((c) => ({ cabinId: c.id, guests: 0 }));
   }
   return { cfg, quote, rows };
@@ -121,6 +125,7 @@ export async function createBooking(input: CreateBookingInput): Promise<CreatedB
   const today = toDhakaDate(now);
   if (!BR_MOBILE.test(input.lead.mobile)) throw new RuleError("BAD_MOBILE", "Invalid Bangladeshi mobile number");
   if (!input.lead.nid.trim()) throw new RuleError("NID_REQUIRED", "Lead guest NID is required");
+  if (input.channel === "ONLINE" && input.discount) throw new RuleError("NO_DISCOUNT", "Discounts are staff-only");
 
   try {
     return await prisma.$transaction(
