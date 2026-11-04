@@ -209,6 +209,8 @@ model Booking {
   checkedInAt   DateTime?
   checkedOutAt  DateTime?
   checkoutNotes String?
+  cancelRequestedAt DateTime?
+  cancelRequestReason String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
@@ -328,4 +330,53 @@ model LoginAttempt {
   key   String   @id
   count Int      @default(0)
   until DateTime
+}
+
+// Payment-proof screenshot, kept in the database (≤ 5 MB, staff-only access).
+model ProofFile {
+  id        String   @id @default(cuid())
+  paymentId String   @unique
+  mime      String
+  size      Int
+  data      Bytes
+  createdAt DateTime @default(now())
+}
+
+// Website text the owner edits without a developer (FR-W13). One row per key, both languages.
+model SiteContent {
+  key       String   @id
+  en        String   @default("")
+  bn        String   @default("")
+  updatedAt DateTime @updatedAt
+}
+
+enum Channel {
+  SMS
+  EMAIL
+}
+
+enum MessageStatus {
+  QUEUED
+  SENT
+  FAILED
+  LOGGED // no gateway configured: kept for staff to see / send by hand
+}
+
+// Outbox for guest and staff messages (PRD §11). Sent by the configured gateway.
+model Message {
+  id        String        @id @default(cuid())
+  bookingId String?
+  event     String // N-01 … N-14
+  channel   Channel
+  to        String
+  subject   String?
+  body      String
+  status    MessageStatus @default(QUEUED)
+  error     String?
+  createdAt DateTime      @default(now())
+  sentAt    DateTime?
+
+  @@index([bookingId])
+  @@index([status, createdAt])
+  @@unique([bookingId, event, channel, to])
 }

@@ -8,6 +8,7 @@ import {
 import { dbDate, iso, loadCabins, loadPricingConfig } from "./config";
 import { blindIndex, encryptField } from "./crypto";
 import { prisma } from "./db";
+import { notify } from "./notify";
 
 export interface LeadGuest {
   name: string;
@@ -122,7 +123,7 @@ const BR_MOBILE = /^(?:\+?88)?01[3-9]\d{8}$/;
  * Booking write path (PRD §14): one transaction that locks the trip date, re-checks every
  * rule against fresh data, inserts cabin_night rows (UNIQUE rejects clashes), then the booking.
  */
-export async function createBooking(input: CreateBookingInput): Promise<CreatedBooking> {
+async function _createBooking(input: CreateBookingInput): Promise<CreatedBooking> {
   const now = input.now ?? new Date();
   const today = toDhakaDate(now);
   if (!BR_MOBILE.test(input.lead.mobile)) throw new RuleError("BAD_MOBILE", "Invalid Bangladeshi mobile number");
@@ -229,6 +230,15 @@ export async function expireHolds(now = new Date()): Promise<number> {
       prisma.booking.update({ where: { id: b.id }, data: { status: "EXPIRED" } }),
       prisma.auditLog.create({ data: { entity: "Booking", entityId: b.id, action: "HOLD_EXPIRED", actor: "system" } }),
     ]);
+    await notify("N-10", b.id);
   }
   return due.length;
+}
+
+/** Create a booking, then tell the guest (N-01) and the managers (N-02). */
+export async function createBooking(input: CreateBookingInput): Promise<CreatedBooking> {
+  const b = await _createBooking(input);
+  await notify("N-01", b.id);
+  await notify("N-02", b.id);
+  return b;
 }

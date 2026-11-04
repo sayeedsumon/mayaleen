@@ -23,7 +23,7 @@ export default async function Today({ searchParams }: { searchParams: Promise<{ 
   const first = user.name.split(" ")[0];
   const hour = Number(fmtTime(now).slice(0, 2));
   const hello = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
-  const queue = d.pending.length + d.proofs.length + d.awaiting.length + d.balances.length;
+  const queue = d.pending.length + d.proofs.length + d.awaiting.length + d.balances.length + d.cancelRequests.length;
 
   return (
     <div className="flex flex-col gap-6">
@@ -60,6 +60,17 @@ export default async function Today({ searchParams }: { searchParams: Promise<{ 
             <span className="text-[13px] text-ink-muted">Soonest deadline first</span>
           </div>
           {queue === 0 && <Empty>Nothing needs you right now.</Empty>}
+
+          {d.cancelRequests.map((b) => (
+            <div key={b.id} className="flex flex-wrap items-center gap-4 border-b border-hair px-5 py-4 last:border-0">
+              <Chip tone="rose">Cancel request</Chip>
+              <div className="min-w-[240px] flex-1">
+                <a href={`/admin/bookings/${b.id}`} className="text-[15px] font-semibold text-ink no-underline hover:underline">{b.leadGuest.name} · {fmtDate(b.tripDate)}</a>
+                <div className="text-[13px] text-ink-2">{b.reference} · asked {fmtDateTime(b.cancelRequestedAt)}{b.cancelRequestReason ? ` · “${b.cancelRequestReason}”` : ""}</div>
+              </div>
+              <a href={`tel:${b.leadGuest.mobile}`} className="btn-ghost btn-sm">Call {b.leadGuest.mobile}</a>
+            </div>
+          ))}
 
           {d.pending.map((b) => {
             const total = b.lines.reduce((n, l) => n + l.total, 0);

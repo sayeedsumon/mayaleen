@@ -7,6 +7,7 @@ import {
 import { evaluate } from "./booking-service";
 import { dbDate, iso, loadPricingConfig } from "./config";
 import { encryptField } from "./crypto";
+import { notify } from "./notify";
 import { prisma } from "./db";
 
 type Tx = Prisma.TransactionClient;
@@ -90,7 +91,7 @@ async function applyEvent(
 
 // ---------- Approval (FR-A06, FR-A11) ----------
 
-export async function approveBooking(
+async function _approveBooking(
   bookingId: string, actor: string,
   opts: { paymentOption?: PaymentOption; now?: Date } = {},
 ) {
@@ -114,7 +115,7 @@ export async function approveBooking(
   });
 }
 
-export async function rejectBooking(bookingId: string, actor: string, reason: string) {
+async function _rejectBooking(bookingId: string, actor: string, reason: string) {
   if (!reason.trim()) throw new RuleError("REASON_REQUIRED", "A reason is required");
   return prisma.$transaction(async (tx) => {
     const b = await applyEvent(tx, bookingId, "REJECT", actor, { holdExpiresAt: null }, reason);
@@ -157,7 +158,7 @@ export interface ProofInput {
 }
 
 /** Guest (or staff) submits a bank-transfer proof. Pauses the deadline clock (BR-12). */
-export async function submitProof(bookingId: string, input: ProofInput, actor: string) {
+async function _submitProof(bookingId: string, input: ProofInput, actor: string) {
   if (!(input.amountClaimed > 0)) throw new RuleError("BAD_AMOUNT", "Amount must be positive");
   return prisma.$transaction(async (tx) => {
     const b = await lockBooking(tx, bookingId);
@@ -204,7 +205,7 @@ async function afterVerification(tx: Tx, bookingId: string, actor: string, now: 
 }
 
 /** Staff enter the amount actually received and mark the proof Verified (R-01). */
-export async function verifyPayment(paymentId: string, amountReceived: number, actor: string, now = new Date()) {
+async function _verifyPayment(paymentId: string, amountReceived: number, actor: string, now = new Date()) {
   if (!(amountReceived > 0)) throw new RuleError("BAD_AMOUNT", "Amount received must be positive");
   return prisma.$transaction(async (tx) => {
     const p = await tx.payment.findUniqueOrThrow({ where: { id: paymentId }, include: { invoice: true } });
@@ -218,7 +219,7 @@ export async function verifyPayment(paymentId: string, amountReceived: number, a
   });
 }
 
-export async function rejectPayment(paymentId: string, reason: string, actor: string, now = new Date()) {
+async function _rejectPayment(paymentId: string, reason: string, actor: string, now = new Date()) {
   if (!reason.trim()) throw new RuleError("REASON_REQUIRED", "A reason is required");
   return prisma.$transaction(async (tx) => {
     const p = await tx.payment.findUniqueOrThrow({ where: { id: paymentId }, include: { invoice: true } });
@@ -236,7 +237,7 @@ export async function rejectPayment(paymentId: string, reason: string, actor: st
 }
 
 /** Staff record a bank payment the guest did not upload (FR-A13): created already verified. */
-export async function recordManualPayment(
+async function _recordManualPayment(
   bookingId: string,
   input: { amount: number; txnId?: string; transferAt?: Date; senderName?: string },
   actor: string,
@@ -286,7 +287,7 @@ export async function recordRefund(
 
 // ---------- Cancel / no-show / deadlines (FR-A09, FR-A10) ----------
 
-export async function cancelBooking(bookingId: string, actor: string, reason: string) {
+async function _cancelBooking(bookingId: string, actor: string, reason: string) {
   if (!reason.trim()) throw new RuleError("REASON_REQUIRED", "A reason is required");
   return prisma.$transaction(async (tx) => {
     const b = await applyEvent(tx, bookingId, "CANCEL", actor, { holdExpiresAt: null }, reason);
@@ -320,7 +321,7 @@ export async function extendDeadline(bookingId: string, newDeadline: Date, actor
 
 // ---------- Food packages on full boat (FR-A15, BR-07/08) ----------
 
-export async function setFoodPackages(bookingId: string, foodGuests: GuestCount[], actor: string, now = new Date()) {
+async function _setFoodPackages(bookingId: string, foodGuests: GuestCount[], actor: string, now = new Date()) {
   return prisma.$transaction(async (tx) => {
     const b = await lockBooking(tx, bookingId);
     if (b.type !== "FULL_BOAT") throw new RuleError("SHARED_FOOD", "Food is included on shared bookings (BR-08)");
@@ -375,7 +376,7 @@ export async function checkIn(
   });
 }
 
-export async function checkOut(bookingId: string, actor: string, notes?: string, now = new Date()) {
+async function _checkOut(bookingId: string, actor: string, notes?: string, now = new Date()) {
   return prisma.$transaction((tx) =>
     applyEvent(tx, bookingId, "CHECK_OUT", actor, { checkedOutAt: now, checkoutNotes: notes?.trim() || null }),
   );
@@ -390,7 +391,7 @@ export interface InvoiceLineInput {
   unitPrice: number; // positive number; DISCOUNT lines are subtracted
 }
 
-export async function reviseInvoice(
+async function _reviseInvoice(
   bookingId: string,
   input: { lines: InvoiceLineInput[]; paymentOption: PaymentOption; dueNowAt?: Date; balanceAt?: Date | null; note?: string },
   actor: string,
@@ -463,7 +464,7 @@ const CHANGEABLE = ["PENDING_APPROVAL", "AWAITING_PAYMENT", "CONFIRMED_BALANCE_D
  * Staff change date, cabins, guests or food. Availability is re-checked and the booking re-priced;
  * if an invoice exists a revised one is issued, and the payment status follows the new total.
  */
-export async function changeBooking(bookingId: string, change: BookingChange, actor: string, now = new Date()) {
+async function _changeBooking(bookingId: string, change: BookingChange, actor: string, now = new Date()) {
   return prisma.$transaction(async (tx) => {
     const b = await lockBooking(tx, bookingId);
     if (!CHANGEABLE.includes(b.status)) {
@@ -526,4 +527,50 @@ export async function changeBooking(bookingId: string, change: BookingChange, ac
     });
     return { total: newTotal, previousTotal: oldTotal };
   });
+}
+
+// ---------- Public API: each action, then its guest/staff messages (PRD §11) ----------
+
+async function bookingOfPayment(paymentId: string) {
+  return (await prisma.payment.findUniqueOrThrow({ where: { id: paymentId }, include: { invoice: true } })).invoice.bookingId;
+}
+
+async function afterPayment(bookingId: string) {
+  const b = await prisma.booking.findUnique({ where: { id: bookingId }, select: { status: true } });
+  if (b?.status === "CONFIRMED_BALANCE_DUE") await notify("N-07", bookingId);
+  else if (b?.status === "CONFIRMED_PAID") await notify("N-08", bookingId);
+}
+
+export async function approveBooking(...a: Parameters<typeof _approveBooking>) {
+  const r = await _approveBooking(...a); await notify("N-03", a[0]); return r;
+}
+export async function rejectBooking(...a: Parameters<typeof _rejectBooking>) {
+  const r = await _rejectBooking(...a); await notify("N-04", a[0], { reason: a[2] }); return r;
+}
+export async function submitProof(...a: Parameters<typeof _submitProof>) {
+  const r = await _submitProof(...a); await notify("N-06", a[0], { claimed: `Tk ${a[1].amountClaimed.toLocaleString("en-US")}` }, { repeatKey: r.id }); return r;
+}
+export async function verifyPayment(...a: Parameters<typeof _verifyPayment>) {
+  const r = await _verifyPayment(...a); await afterPayment(await bookingOfPayment(a[0])); return r;
+}
+export async function rejectPayment(...a: Parameters<typeof _rejectPayment>) {
+  const r = await _rejectPayment(...a); await notify("N-09", await bookingOfPayment(a[0]), { reason: a[1] }, { repeatKey: a[0] }); return r;
+}
+export async function recordManualPayment(...a: Parameters<typeof _recordManualPayment>) {
+  const r = await _recordManualPayment(...a); await afterPayment(a[0]); return r;
+}
+export async function cancelBooking(...a: Parameters<typeof _cancelBooking>) {
+  const r = await _cancelBooking(...a); await notify("N-13", a[0], { what: "cancelled" }, { repeatKey: "cancel" }); return r;
+}
+export async function setFoodPackages(...a: Parameters<typeof _setFoodPackages>) {
+  const r = await _setFoodPackages(...a); await notify("N-13", a[0], { what: "food packages" }, { repeatKey: String(Date.now()) }); return r;
+}
+export async function reviseInvoice(...a: Parameters<typeof _reviseInvoice>) {
+  const r = await _reviseInvoice(...a); await notify("N-13", a[0], { what: `invoice revision ${r.revision}` }, { repeatKey: `rev${r.revision}` }); return r;
+}
+export async function changeBooking(...a: Parameters<typeof _changeBooking>) {
+  const r = await _changeBooking(...a); await notify("N-13", a[0], { what: "date, cabins or guests" }, { repeatKey: String(Date.now()) }); return r;
+}
+export async function checkOut(...a: Parameters<typeof _checkOut>) {
+  const r = await _checkOut(...a); await notify("N-14", a[0]); return r;
 }

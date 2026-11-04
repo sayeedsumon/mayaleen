@@ -43,6 +43,7 @@ export default async function BookingPage({ params, searchParams }: { params: Pr
   const bound = <T extends (id: string, f: FormData) => Promise<unknown>>(fn: T) => fn.bind(null, id) as unknown as (f: FormData) => Promise<void>;
   const when = (action: string) => b.audit.filter((a) => a.action === action).at(-1)?.at;
 
+  const closed = ["REJECTED", "EXPIRED", "CANCELLED", "NO_SHOW"].includes(s);
   const idx = ORDER.indexOf(s);
   const steps = [
     { label: "Requested", when: `${fmtDateTime(b.createdAt)} · ${SOURCE_LABEL[b.source]}`, done: true },
@@ -52,13 +53,15 @@ export default async function BookingPage({ params, searchParams }: { params: Pr
     { label: "Checked in", when: b.checkedInAt ? fmtDateTime(b.checkedInAt) : `${fmtDate(b.tripDate)}, 13:00`, done: idx >= 5 },
   ];
   const current = steps.findIndex((x) => !x.done);
-  const closed = ["REJECTED", "EXPIRED", "CANCELLED", "NO_SHOW"].includes(s);
 
   return (
     <div className="flex flex-col gap-[18px]">
       <a href="/admin/bookings" className="flex items-center gap-1.5 text-[13px] font-medium no-underline"><Icon name="left" size={14} />Bookings</a>
       <Banner tone="ok">{sp.ok}</Banner>
       <Banner>{sp.error}</Banner>
+      {b.cancelRequestedAt && !closed && (
+        <Banner tone="warn">The guest asked to cancel on {fmtDateTime(b.cancelRequestedAt)}{b.cancelRequestReason ? `: “${b.cancelRequestReason}”` : "."} Call them, then cancel below if agreed.</Banner>
+      )}
 
       <header className="flex flex-wrap items-start gap-4">
         <div className="min-w-[340px] flex-1">

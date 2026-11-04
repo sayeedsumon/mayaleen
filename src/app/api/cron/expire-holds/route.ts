@@ -1,4 +1,5 @@
 import { expireHolds } from "@/server/booking-service";
+import { retryOutbox, sendReminders } from "@/server/notify";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,9 @@ export async function GET(req: Request) {
   if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
     return new Response("Unauthorized", { status: 401 });
   }
-  const released = await expireHolds(new Date());
-  return Response.json({ ok: true, released });
+  const now = new Date();
+  const released = await expireHolds(now);
+  const reminders = await sendReminders(now);
+  const retried = await retryOutbox();
+  return Response.json({ ok: true, released, reminders, retried });
 }

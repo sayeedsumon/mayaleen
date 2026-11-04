@@ -9,8 +9,9 @@ export default async function SettingsLayout({ children }: { children: ReactNode
   const items = [
     ...(admin ? [
       ["/admin/settings/rates", "Rates & holidays"], ["/admin/settings/cabins", "Cabins"], ["/admin/settings/rules", "Booking rules"],
-      ["/admin/settings/bank", "Bank accounts"], ["/admin/settings/staff", "Staff & roles"],
+      ["/admin/settings/bank", "Bank accounts"], ["/admin/settings/staff", "Staff & roles"], ["/admin/settings/website", "Website text"],
     ] : []),
+    ...(can(user.role, "MANAGE_BOOKINGS") ? [["/admin/settings/messages", "SMS & email"]] : []),
     ["/admin/settings/account", "My account & password"],
     ...(admin ? [["/admin/settings/audit", "Audit log"]] : []),
   ] as [string, string][];

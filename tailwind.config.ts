@@ -22,6 +22,8 @@ export default {
       fontFamily: {
         display: ["Fraunces", "Georgia", "serif"],
         sans: ["Inter", "system-ui", "sans-serif"],
+        bn: ["\"Hind Siliguri\"", "Inter", "system-ui", "sans-serif"],
+        bnDisplay: ["\"Noto Serif Bengali\"", "\"Hind Siliguri\"", "serif"],
       },
     },
   },

@@ -57,6 +57,9 @@ export async function navCounts() {
 
 export async function dashboard(now = new Date()) {
   const today = toDhakaDate(now);
+  const cancelRequests = await prisma.booking.findMany({
+    where: { cancelRequestedAt: { not: null }, status: { in: OPEN_STATUSES } }, include: withLead, orderBy: { cancelRequestedAt: "asc" },
+  });
   const [pending, proofs, awaiting, balances, upcoming, activity, cabins, weekNights, users] = await Promise.all([
     prisma.booking.findMany({
       where: { status: "PENDING_APPROVAL" }, include: { ...withLead, lines: true }, orderBy: { holdExpiresAt: "asc" },
@@ -105,7 +108,7 @@ export async function dashboard(now = new Date()) {
   });
 
   return {
-    today, pending, proofs, awaiting, balances, week, nextDate,
+    today, pending, proofs, awaiting, balances, week, nextDate, cancelRequests,
     nextGroup: nextGroup.map((b) => ({
       ...b, paid: paid.get(b.id) ?? 0,
       adults: b.guests.filter((g) => /^adult/i.test(g.ageBandName)).length,
@@ -391,8 +394,10 @@ export async function paymentsPage(tab: "verify" | "verified" | "rejected" | "re
   const dupSet = new Set(dupes.filter((d) => d._count > 1).map((d) => d.txnId));
   const paid = await paidByBooking(rows.map((r) => r.invoice.bookingId));
   const who = new Map(users.map((u) => [u.id, u.name]));
+  const files = new Map((await prisma.proofFile.findMany({ where: { paymentId: { in: rows.map((r) => r.id) } }, select: { paymentId: true, mime: true } })).map((f) => [f.paymentId, f.mime]));
   return {
     rows: rows.map((r) => ({
+      proofMime: files.get(r.id) ?? null,
       ...r, duplicate: !!r.txnId && dupSet.has(r.txnId), bookingPaid: paid.get(r.invoice.bookingId) ?? 0,
       verifiedByName: r.verifiedBy ? who.get(r.verifiedBy) ?? r.verifiedBy : null,
     })),
@@ -488,4 +493,39 @@ export async function reports(month: string) {
     unpaidCount: owed.filter((o) => (paid.get(o.b.id) ?? 0) === 0).length,
     balanceCount: owed.filter((o) => (paid.get(o.b.id) ?? 0) > 0).length,
   };
+}
+
+// ---------- Public website (no guest details leave the server) ----------
+
+export async function publicMonth(month: string) {
+  const data = await calendarMonth(month);
+  return {
+    month: data.month,
+    cabins: data.cabins.filter((c) => c.active).map(({ id, name, type, capacity, surcharge }) => ({ id, name, type, capacity, surcharge, active: true })),
+    pricing: data.pricing,
+    days: data.days.map((d) => ({
+      date: d.date,
+      blocked: !!d.blockReason,
+      holiday: d.holiday,
+      bookings: d.bookings.filter((b) => OPEN_STATUSES.includes(b.status)).map((b) => ({ type: b.type, cabinIds: b.cabinIds })),
+    })),
+  };
+}
+export type PublicMonth = Awaited<ReturnType<typeof publicMonth>>;
+
+/** Everything the guest's private booking page shows. */
+export async function guestBooking(token: string) {
+  if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) return null;
+  const b = await prisma.booking.findUnique({
+    where: { accessToken: token },
+    include: {
+      leadGuest: true, guests: true, lines: true,
+      nights: { include: { cabin: { include: { cabinType: true } } }, orderBy: { cabin: { sortOrder: "asc" } } },
+      invoices: { orderBy: { revision: "desc" }, include: { payments: { orderBy: { createdAt: "desc" } } } },
+    },
+  });
+  if (!b) return null;
+  const paid = await prisma.$transaction((tx) => paidAmount(tx, b.id));
+  const cfg = await loadPricingConfig(prisma);
+  return { ...b, paid, advancePct: cfg.settings.advancePct, approvalHours: cfg.settings.approvalWindowHours };
 }

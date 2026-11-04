@@ -63,12 +63,14 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
           <section aria-labelledby="pv-h" className="card flex flex-wrap">
             <div className="flex min-w-0 flex-[1_1_340px] flex-col gap-2.5 border-b border-hair p-[18px] md:border-b-0 md:border-r">
               <div className="text-[13px] font-semibold text-ink-2">Guest&apos;s screenshot</div>
-              {current.proofUrl ? (
+              {current.proofUrl && /pdf/i.test(current.proofMime ?? "") ? (
+                <a href={current.proofUrl} target="_blank" rel="noreferrer" className="btn-ghost h-[120px] w-full">Open the PDF proof</a>
+              ) : current.proofUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <a href={current.proofUrl} target="_blank" rel="noreferrer"><img src={current.proofUrl} alt="Payment screenshot" className="max-h-[420px] w-full rounded-[10px] object-contain" /></a>
               ) : (
                 <div className="flex h-[300px] items-center justify-center rounded-[10px] p-5 text-center text-[13px] text-ink-2" style={{ background: "repeating-linear-gradient(135deg,#F2EFE8 0 10px,#ECE8DF 10px 20px)" }}>
-                  No screenshot attached. Guest uploads arrive with the public website (Phase 3).
+                  No screenshot attached. Ask the guest to upload it from their booking link.
                 </div>
               )}
               {others.length > 0 && (

@@ -157,3 +157,29 @@ export async function guestNotesAction(guestId: string, form: FormData) {
   } catch (e) { fail(back, e); }
   finish(back, "Notes saved");
 }
+
+export async function websiteContentAction(form: FormData) {
+  const u = await requireUser("ADMIN_SETTINGS");
+  const back = "/admin/settings/website";
+  try {
+    const { CONTENT_DEFAULTS } = await import("@/server/site-content");
+    for (const key of Object.keys(CONTENT_DEFAULTS)) {
+      const en = String(form.get(`${key}_en`) ?? "").trim();
+      const bn = String(form.get(`${key}_bn`) ?? "").trim();
+      await prisma.siteContent.upsert({ where: { key }, update: { en, bn }, create: { key, en, bn } });
+    }
+    await prisma.auditLog.create({ data: { entity: "SiteContent", entityId: "website", action: "CONTENT_SAVED", actor: u.id } });
+  } catch (e) { fail(back, e); }
+  finish(back, "Website text saved. It shows on the site right away.");
+}
+
+export async function resendMessageAction(form: FormData) {
+  await requireUser("MANAGE_BOOKINGS");
+  const back = "/admin/settings/messages";
+  try {
+    const { deliver } = await import("@/server/notify");
+    await prisma.message.update({ where: { id: str(form, "id") }, data: { status: "QUEUED" } });
+    await deliver(str(form, "id"));
+  } catch (e) { fail(back, e); }
+  finish(back, "Message sent again");
+}
