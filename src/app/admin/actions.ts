@@ -32,7 +32,13 @@ export async function loginAction(form: FormData) {
   const rec = attempts.get(mobile);
   if (rec && rec.n >= 5 && rec.until > Date.now()) fail("/admin/login", new RuleError("LOCKED", "Too many attempts. Try again in 10 minutes."));
 
-  const user = await prisma.user.findUnique({ where: { mobile } });
+  let user;
+  try {
+    user = await prisma.user.findUnique({ where: { mobile } });
+  } catch (e) {
+    console.error("login: database error", e);
+    fail("/admin/login", new RuleError("DB_DOWN", "Cannot reach the database. Check /api/health."));
+  }
   const ok =
     !!user && user.active && verifyPassword(str(form, "password"), user.pwHash) &&
     (!user.twoFaOn || (!!user.totpSecret && verifyTotp(user.totpSecret, str(form, "code"))));
