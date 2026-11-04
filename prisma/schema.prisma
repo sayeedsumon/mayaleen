@@ -1,0 +1,314 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// All money is stored as whole Taka (BDT) integers.
+// All trip dates are calendar dates in Asia/Dhaka (BR-20).
+
+enum Role {
+  FRONT_DESK
+  MANAGER
+  ADMIN
+}
+
+enum BookingType {
+  SHARED
+  FULL_BOAT
+}
+
+enum BookingStatus {
+  PENDING_APPROVAL
+  AWAITING_PAYMENT
+  PAYMENT_SUBMITTED
+  CONFIRMED_BALANCE_DUE
+  CONFIRMED_PAID
+  CHECKED_IN
+  COMPLETED
+  REJECTED
+  EXPIRED
+  CANCELLED
+  NO_SHOW
+}
+
+enum BookingSource {
+  WEBSITE
+  PHONE
+  FACEBOOK
+  WALK_IN
+  OTHER
+}
+
+enum PaymentOption {
+  FULL
+  ADVANCE
+}
+
+enum PackageType {
+  SHARED
+  FULL_BOAT
+  FULL_BOAT_FOOD
+}
+
+enum DayType {
+  HOLIDAY
+  FRIDAY
+  THU_SAT
+  SUN_WED
+}
+
+enum LineKind {
+  PACKAGE
+  FOOD
+  SURCHARGE
+  DISCOUNT
+}
+
+enum InvoiceStatus {
+  ISSUED
+  SUPERSEDED
+  VOID
+}
+
+enum PaymentStatus {
+  SUBMITTED
+  VERIFIED
+  REJECTED
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  mobile    String   @unique
+  email     String?  @unique
+  role      Role
+  pwHash    String
+  totpSecret String?
+  twoFaOn   Boolean  @default(false)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model CabinType {
+  id            String  @id @default(cuid())
+  name          String  @unique
+  surcharge     Int     @default(0) // Tk per cabin, 0 at launch
+  descriptionEn String  @default("")
+  descriptionBn String  @default("")
+  cabins        Cabin[]
+}
+
+model Cabin {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  cabinTypeId String
+  cabinType   CabinType @relation(fields: [cabinTypeId], references: [id])
+  capacity    Int
+  active      Boolean   @default(true)
+  sortOrder   Int       @default(0)
+  photos      String[]
+  nights      CabinNight[]
+}
+
+// Single-row, versioned settings (BR-10/11/13/14, FR-A24).
+model BoatSetting {
+  id                   Int      @id @default(autoincrement())
+  effectiveFrom        DateTime @default(now())
+  capacityCap          Int      @default(16)
+  approvalWindowHours  Int      @default(12)
+  paymentWindowHours   Int      @default(24)
+  balanceLeadHours     Int      @default(24)
+  cutoffDays           Int      @default(2)
+  horizonMonths        Int      @default(12)
+  advancePct           Int      @default(50)
+  minBillablePerCabin  Int      @default(0) // 0 = off
+  groupTierEnabled     Boolean  @default(false)
+  groupTierMinGuests   Int      @default(0)
+  groupTierRate        Int      @default(6800)
+}
+
+model AgeBand {
+  id         String @id @default(cuid())
+  name       String @unique
+  minAge     Int
+  maxAge     Int
+  pctOfAdult Int // 0..100
+  isAdult    Boolean @default(false)
+}
+
+model RateRule {
+  id            String      @id @default(cuid())
+  packageType   PackageType
+  dayType       DayType
+  amount        Int
+  effectiveFrom DateTime    @default(now())
+
+  @@index([packageType, dayType, effectiveFrom])
+}
+
+model DateRateOverride {
+  id          String      @id @default(cuid())
+  tripDate    DateTime    @db.Date
+  packageType PackageType
+  amount      Int
+
+  @@unique([tripDate, packageType])
+}
+
+model Holiday {
+  id     String   @id @default(cuid())
+  date   DateTime @unique @db.Date
+  name   String
+  source String   @default("expected") // expected | gazette
+}
+
+model DateBlock {
+  id        String   @id @default(cuid())
+  tripDate  DateTime @unique @db.Date
+  reason    String
+  createdBy String?
+  createdAt DateTime @default(now())
+}
+
+model Guest {
+  id               String    @id @default(cuid())
+  name             String
+  mobile           String
+  email            String?
+  nid              String?
+  emergencyContact String?
+  bookings         Booking[]
+
+  @@index([mobile])
+}
+
+model Booking {
+  id            String        @id @default(cuid())
+  reference     String        @unique // e.g. MYL-261204-07
+  type          BookingType
+  tripDate      DateTime      @db.Date
+  status        BookingStatus @default(PENDING_APPROVAL)
+  source        BookingSource @default(WEBSITE)
+  paymentOption PaymentOption @default(FULL)
+  holdExpiresAt DateTime?
+  paymentDueAt  DateTime?
+  balanceDueAt  DateTime?
+  leadGuestId   String
+  leadGuest     Guest         @relation(fields: [leadGuestId], references: [id])
+  language      String        @default("en")
+  notes         String?
+  accessToken   String        @unique // private "My Booking" link
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  guests   BookingGuest[]
+  nights   CabinNight[]
+  lines    BookingLine[]
+  invoices Invoice[]
+
+  @@index([tripDate, status])
+}
+
+model BookingGuest {
+  id            String   @id @default(cuid())
+  bookingId     String
+  booking       Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  name          String?
+  ageBandId     String?
+  ageBandName   String
+  nidOrPassport String?
+  isLead        Boolean  @default(false)
+}
+
+// One row per cabin per trip date. UNIQUE(cabin, date) makes double booking
+// impossible at the database level (BR-02/03).
+model CabinNight {
+  id        String   @id @default(cuid())
+  cabinId   String
+  cabin     Cabin    @relation(fields: [cabinId], references: [id])
+  tripDate  DateTime @db.Date
+  bookingId String
+  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  guests    Int      @default(0)
+
+  @@unique([cabinId, tripDate])
+  @@index([tripDate])
+}
+
+model BookingLine {
+  id          String   @id @default(cuid())
+  bookingId   String
+  booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  kind        LineKind
+  description String
+  qty         Int
+  unitPrice   Int
+  total       Int
+}
+
+model BankAccount {
+  id          String  @id @default(cuid())
+  bank        String
+  branch      String
+  accountName String
+  accountNo   String
+  routingNo   String
+  isDefault   Boolean @default(false)
+  active      Boolean @default(true)
+}
+
+model Invoice {
+  id         String        @id @default(cuid())
+  number     String        @unique
+  bookingId  String
+  booking    Booking       @relation(fields: [bookingId], references: [id])
+  revision   Int           @default(1)
+  total      Int
+  dueNow     Int
+  dueNowAt   DateTime
+  balance    Int
+  balanceAt  DateTime?
+  status     InvoiceStatus @default(ISSUED)
+  bankSnapshot Json
+  createdAt  DateTime      @default(now())
+  payments   Payment[]
+}
+
+model Payment {
+  id             String        @id @default(cuid())
+  invoiceId      String
+  invoice        Invoice       @relation(fields: [invoiceId], references: [id])
+  amountClaimed  Int
+  amountReceived Int?
+  txnId          String?
+  senderName     String?
+  senderBank     String?
+  transferAt     DateTime?
+  proofUrl       String?
+  status         PaymentStatus @default(SUBMITTED)
+  rejectReason   String?
+  verifiedBy     String?
+  verifiedAt     DateTime?
+  isRefund       Boolean       @default(false)
+  createdAt      DateTime      @default(now())
+
+  @@index([txnId])
+}
+
+model AuditLog {
+  id       String   @id @default(cuid())
+  entity   String
+  entityId String
+  action   String
+  before   Json?
+  after    Json?
+  actor    String
+  reason   String?
+  at       DateTime @default(now())
+
+  @@index([entity, entityId])
+}
