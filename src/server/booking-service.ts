@@ -31,6 +31,8 @@ export interface CreateBookingInput {
   /** FULL_BOAT only */
   foodGuests?: GuestCount[];
   discount?: { amount: number; reason: string };
+  /** Staff user id for the audit log (online bookings log "ONLINE"). */
+  actorId?: string;
   now?: Date;
 }
 
@@ -175,7 +177,7 @@ export async function createBooking(input: CreateBookingInput): Promise<CreatedB
           },
         });
         await tx.auditLog.create({
-          data: { entity: "Booking", entityId: booking.id, action: "CREATED", actor: input.channel, after: { total: quote.total } },
+          data: { entity: "Booking", entityId: booking.id, action: "CREATED", actor: input.actorId ?? input.channel, after: { total: quote.total } },
         });
         return { id: booking.id, reference: booking.reference, accessToken, holdExpiresAt, quote };
       },

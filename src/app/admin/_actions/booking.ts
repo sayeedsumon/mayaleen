@@ -47,6 +47,7 @@ export async function createBookingAction(form: FormData) {
       guestsPerCabin: p.type === "SHARED" ? p.guestsPerCabin : undefined,
       discount: p.discount > 0 ? { amount: p.discount, reason: p.discountReason || "Staff discount" } : undefined,
       notes: str(form, "notes") || undefined,
+      actorId: user.id,
     });
     id = b.id;
     if (p.approve) {

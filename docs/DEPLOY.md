@@ -34,6 +34,7 @@ The seed creates the cabins, rates, child age bands, 2027 fixed-date holidays, a
 | `DIRECT_URL` | Neon direct URL |
 | `SESSION_SECRET` | output of `openssl rand -hex 32` |
 | `FIELD_ENCRYPTION_KEY` | a different `openssl rand -hex 32` (**exactly 64 hex characters**) |
+| `CRON_SECRET` | any long random string; lets Vercel Cron call `/api/cron/expire-holds` |
 
 3. Deploy. `vercel.json` already pins functions to Singapore (`sin1`).
 4. Open `https://<your-project>.vercel.app/admin/login` and sign in.
@@ -48,7 +49,6 @@ The seed creates the cabins, rates, child age bands, 2027 fixed-date holidays, a
 
 ## Known limits on serverless (to fix in later phases)
 
-- The sign-in lockout (5 tries) is kept in server memory, so on Vercel it resets between requests. Moving it into the database is planned for Phase 5 hardening. Use a strong admin password until then.
-- Holds expire when the 5-minute job runs. That job is built in Phase 4 using a Vercel Cron or Neon-backed scheduler. Until then expired holds are not released automatically.
+- Expired holds are released whenever staff open the admin panel, and by a daily Vercel Cron (Hobby plans allow one run a day). Upgrade the cron to every 5 minutes on a paid plan, or use an external pinger.
 - Payment-proof uploads (Phase 3) will use Vercel Blob.
 - Neon free tier pauses the database after inactivity, so the first request after a quiet period can take a second or two longer.
