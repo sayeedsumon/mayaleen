@@ -6,6 +6,7 @@ import {
   type BookingType, type GuestCount, type ISODate, type Quote,
 } from "@/domain";
 import { dbDate, iso, loadCabins, loadPricingConfig } from "./config";
+import { blindIndex, encryptField } from "./crypto";
 import { prisma } from "./db";
 
 export interface LeadGuest {
@@ -47,6 +48,68 @@ export class SlotTakenError extends RuleError {
   }
 }
 
+type Tx = Prisma.TransactionClient;
+
+export interface PlanInput {
+  type: BookingType;
+  tripDate: ISODate;
+  channel: "ONLINE" | "STAFF";
+  guests: GuestCount[];
+  cabinIds?: string[];
+  guestsPerCabin?: Record<string, number>;
+  foodGuests?: GuestCount[];
+}
+
+/**
+ * Re-checks every availability rule against fresh data and prices the request.
+ * Shared by new bookings and by changes to existing ones (`excludeBookingId` frees the
+ * booking's own cabins so it can be moved or edited without clashing with itself).
+ */
+export async function evaluate(tx: Tx, input: PlanInput, now: Date, today: ISODate, excludeBookingId?: string) {
+  const [cfg, cabins] = await Promise.all([loadPricingConfig(tx, now), loadCabins(tx)]);
+  checkBookingWindow(input.tripDate, today, cfg.settings, input.channel);
+
+  const date = dbDate(input.tripDate);
+  const [nights, block] = await Promise.all([
+    tx.cabinNight.findMany({
+      where: { tripDate: date, ...(excludeBookingId && { bookingId: { not: excludeBookingId } }) },
+      include: { booking: true },
+    }),
+    tx.dateBlock.findUnique({ where: { tripDate: date } }),
+  ]);
+  const byBooking = new Map<string, { type: BookingType; cabinIds: string[] }>();
+  for (const n of nights) {
+    const e = byBooking.get(n.bookingId) ?? { type: n.booking.type, cabinIds: [] };
+    e.cabinIds.push(n.cabinId);
+    byBooking.set(n.bookingId, e);
+  }
+  const avail = availabilityFor(cabins, [...byBooking.values()], !!block);
+  if (block) throw new RuleError("BLOCKED", "Date is not available");
+
+  let quote: Quote;
+  let rows: { cabinId: string; guests: number }[];
+  if (input.type === "SHARED") {
+    const chosen = validateShared(
+      cabins, avail,
+      { cabinIds: input.cabinIds ?? [], guestsPerCabin: input.guestsPerCabin ?? {}, guests: input.guests },
+      cfg.settings,
+    );
+    quote = quoteShared(cfg, {
+      date: input.tripDate,
+      cabins: chosen.map((c) => ({ ...c, guests: input.guestsPerCabin![c.id] })),
+      guests: input.guests,
+    });
+    rows = chosen.map((c) => ({ cabinId: c.id, guests: input.guestsPerCabin![c.id] }));
+  } else {
+    const chosen = validateFullBoat(
+      cabins, avail, { guests: input.guests, foodGuests: input.foodGuests ?? [] }, cfg.settings,
+    );
+    quote = quoteFullBoat(cfg, { date: input.tripDate, foodGuests: input.foodGuests ?? [] });
+    rows = chosen.map((c) => ({ cabinId: c.id, guests: 0 }));
+  }
+  return { cfg, quote, rows };
+}
+
 const BR_MOBILE = /^(?:\+?88)?01[3-9]\d{8}$/;
 
 /**
@@ -65,54 +128,18 @@ export async function createBooking(input: CreateBookingInput): Promise<CreatedB
         // Serialize writers per trip date; the unique constraint remains the final guard.
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${input.tripDate}))`;
 
-        const [cfg, cabins] = await Promise.all([loadPricingConfig(tx, now), loadCabins(tx)]);
-        checkBookingWindow(input.tripDate, today, cfg.settings, input.channel);
-
+        const { cfg, quote, rows } = await evaluate(tx, input, now, today);
         const date = dbDate(input.tripDate);
-        const [nights, block] = await Promise.all([
-          tx.cabinNight.findMany({ where: { tripDate: date }, include: { booking: true } }),
-          tx.dateBlock.findUnique({ where: { tripDate: date } }),
-        ]);
-        const byBooking = new Map<string, { type: BookingType; cabinIds: string[] }>();
-        for (const n of nights) {
-          const e = byBooking.get(n.bookingId) ?? { type: n.booking.type, cabinIds: [] };
-          e.cabinIds.push(n.cabinId);
-          byBooking.set(n.bookingId, e);
-        }
-        const avail = availabilityFor(cabins, [...byBooking.values()], !!block);
-        if (block) throw new RuleError("BLOCKED", "Date is not available");
-
-        let quote: Quote;
-        let rows: { cabinId: string; guests: number }[];
-        if (input.type === "SHARED") {
-          const chosen = validateShared(
-            cabins, avail,
-            { cabinIds: input.cabinIds ?? [], guestsPerCabin: input.guestsPerCabin ?? {}, guests: input.guests },
-            cfg.settings,
-          );
-          quote = quoteShared(cfg, {
-            date: input.tripDate,
-            cabins: chosen.map((c) => ({ ...c, guests: input.guestsPerCabin![c.id] })),
-            guests: input.guests,
-          });
-          rows = chosen.map((c) => ({ cabinId: c.id, guests: input.guestsPerCabin![c.id] }));
-        } else {
-          const chosen = validateFullBoat(
-            cabins, avail, { guests: input.guests, foodGuests: input.foodGuests ?? [] }, cfg.settings,
-          );
-          quote = quoteFullBoat(cfg, { date: input.tripDate, foodGuests: input.foodGuests ?? [] });
-          rows = chosen.map((c) => ({ cabinId: c.id, guests: 0 }));
-        }
 
         // Reuse guest by mobile (repeat guests).
         const existing = await tx.guest.findFirst({ where: { mobile: input.lead.mobile } });
         const lead = existing
           ? await tx.guest.update({
               where: { id: existing.id },
-              data: { name: input.lead.name, email: input.lead.email, nid: input.lead.nid },
+              data: { name: input.lead.name, email: input.lead.email, nid: encryptField(input.lead.nid), nidHash: blindIndex(input.lead.nid) },
             })
           : await tx.guest.create({
-              data: { name: input.lead.name, mobile: input.lead.mobile, email: input.lead.email, nid: input.lead.nid },
+              data: { name: input.lead.name, mobile: input.lead.mobile, email: input.lead.email, nid: encryptField(input.lead.nid), nidHash: blindIndex(input.lead.nid) },
             });
 
         const seq = (await tx.booking.count({ where: { tripDate: date } })) + 1;

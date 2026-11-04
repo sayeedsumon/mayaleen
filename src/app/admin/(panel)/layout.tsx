@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { requireUser } from "@/server/auth/current-user";
+import { can } from "../../../server/auth/permissions";
 import { logoutAction } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -14,10 +15,11 @@ export default async function PanelLayout({ children }: { children: ReactNode })
     ["/admin/bookings", "Bookings"],
     ["/admin/bookings/new", "New booking"],
     ["/admin/manifest", "Manifest"],
+    ...(can(user.role, "ADMIN_SETTINGS") ? [["/admin/settings/bank", "Bank accounts"], ["/admin/audit", "Audit log"]] : []),
   ];
   return (
     <div className="min-h-screen">
-      <header className="flex flex-wrap items-center gap-x-6 gap-y-2 bg-slate-900 px-4 py-3 text-white">
+      <header className="flex flex-wrap items-center gap-x-6 gap-y-2 bg-slate-900 px-4 py-3 text-white print:hidden">
         <span className="font-semibold">Mayaleen</span>
         <nav className="flex flex-wrap gap-4 text-sm">
           {links.map(([href, label]) => (

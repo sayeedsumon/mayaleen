@@ -5,6 +5,7 @@ import { fmtDate } from "@/lib/format";
 import { requireUser } from "@/server/auth/current-user";
 import { can } from "@/server/auth/permissions";
 import { prisma } from "@/server/db";
+import { decryptField } from "@/server/crypto";
 import { manifest } from "@/server/queries";
 
 export default async function ManifestPage({ searchParams }: { searchParams: Promise<{ date?: string }> }) {
@@ -42,7 +43,7 @@ export default async function ManifestPage({ searchParams }: { searchParams: Pro
             <thead className="text-left text-slate-500"><tr><th>Guest</th><th>Type</th><th>NID / passport</th></tr></thead>
             <tbody>
               {b.guests.map((g) => (
-                <tr key={g.id}><td>{g.name ?? "-"}{g.isLead && " (lead)"}</td><td>{g.ageBandName}</td><td>{g.nidOrPassport ?? (g.isLead ? b.leadGuest.nid : "-")}</td></tr>
+                <tr key={g.id}><td>{g.name ?? "-"}{g.isLead && " (lead)"}</td><td>{g.ageBandName}</td><td>{decryptField(g.nidOrPassport) ?? (g.isLead ? decryptField(b.leadGuest.nid) : "-")}</td></tr>
               ))}
             </tbody>
           </table>

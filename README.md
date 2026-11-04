@@ -8,7 +8,7 @@ Booking, reservation and management system plus public website for the Mayaleen 
 ```bash
 npm install
 docker compose up -d db          # or any Postgres 16
-cp .env.example .env
+cp .env.example .env        # set SESSION_SECRET and FIELD_ENCRYPTION_KEY (openssl rand -hex 32)
 npx prisma db push && npm run db:seed
 npm run dev
 ```
@@ -29,4 +29,12 @@ npm run typecheck
 
 ## Status
 
-Phase 0 (foundation) and Phase 1 (core engine) done. Next: Phase 2, admin panel.
+- Phase 0 (foundation) and Phase 1 (core engine): done.
+- Phase 2 (admin panel): mostly done. Staff sign-in with roles, dashboard, calendar and timeline,
+  booking search/CSV export, create/change/approve/reject/cancel, bank-payment verification with
+  duplicate check, refunds, food packages, check-in/out with encrypted NIDs, manifest and kitchen
+  sheet, printable invoice, bank accounts, audit log.
+- Still to do in Phase 2: staff 2FA enrolment screen, PDF generation (print to PDF works today).
+- Next: Phase 3, public website.
+
+First login (local): mobile `01700000000`, password `changeme-dev`. Set `ADMIN_PASSWORD` before seeding anywhere real.

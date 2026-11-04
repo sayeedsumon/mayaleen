@@ -4,7 +4,9 @@ import {
   quoteFullBoat, splitPayment, toDhakaDate, transition,
   type BookingEvent, type GuestCount, type PaymentOption,
 } from "@/domain";
-import { iso, loadPricingConfig } from "./config";
+import { evaluate } from "./booking-service";
+import { dbDate, iso, loadPricingConfig } from "./config";
+import { encryptField } from "./crypto";
 import { prisma } from "./db";
 
 type Tx = Prisma.TransactionClient;
@@ -361,7 +363,7 @@ export async function checkIn(
     await tx.bookingGuest.deleteMany({ where: { bookingId, ageBandName: { in: adultBands } } });
     await tx.bookingGuest.createMany({
       data: adults.map((a, i) => ({
-        bookingId, name: a.name, nidOrPassport: a.nidOrPassport, ageBandName: adultBands[0] ?? "Adult", isLead: i === 0,
+        bookingId, name: a.name, nidOrPassport: encryptField(a.nidOrPassport.trim()), ageBandName: adultBands[0] ?? "Adult", isLead: i === 0,
       })),
     });
     return applyEvent(tx, bookingId, "CHECK_IN", actor, {}, `Checked in ${adults.length} adults`);
@@ -370,4 +372,85 @@ export async function checkIn(
 
 export async function checkOut(bookingId: string, actor: string, notes?: string) {
   return prisma.$transaction((tx) => applyEvent(tx, bookingId, "CHECK_OUT", actor, notes ? { notes } : {}));
+}
+
+// ---------- Change a booking (FR-A08) ----------
+
+export interface BookingChange {
+  tripDate?: string;
+  guests: GuestCount[];
+  cabinIds?: string[];
+  guestsPerCabin?: Record<string, number>;
+  foodGuests?: GuestCount[];
+}
+
+const CHANGEABLE = ["PENDING_APPROVAL", "AWAITING_PAYMENT", "CONFIRMED_BALANCE_DUE", "CONFIRMED_PAID"];
+
+/**
+ * Staff change date, cabins, guests or food. Availability is re-checked and the booking re-priced;
+ * if an invoice exists a revised one is issued, and the payment status follows the new total.
+ */
+export async function changeBooking(bookingId: string, change: BookingChange, actor: string, now = new Date()) {
+  return prisma.$transaction(async (tx) => {
+    const b = await lockBooking(tx, bookingId);
+    if (!CHANGEABLE.includes(b.status)) {
+      throw new RuleError("BAD_STATE", `Cannot change a booking that is ${b.status}`);
+    }
+    const oldDate = iso(b.tripDate);
+    const newDate = change.tripDate ?? oldDate;
+    for (const d of [...new Set([oldDate, newDate])].sort()) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${d}))`;
+    }
+    const { cfg, quote, rows } = await evaluate(
+      tx,
+      { type: b.type, tripDate: newDate, channel: "STAFF", guests: change.guests, cabinIds: change.cabinIds, guestsPerCabin: change.guestsPerCabin, foodGuests: change.foodGuests },
+      now, toDhakaDate(now), bookingId,
+    );
+
+    const discounts = b.lines.filter((l) => l.kind === "DISCOUNT");
+    await tx.bookingLine.deleteMany({ where: { bookingId, kind: { not: "DISCOUNT" } } });
+    await tx.bookingLine.createMany({ data: quote.lines.map((l) => ({ ...l, bookingId })) });
+
+    await tx.cabinNight.deleteMany({ where: { bookingId } });
+    await tx.cabinNight.createMany({
+      data: rows.map((r) => ({ bookingId, cabinId: r.cabinId, tripDate: dbDate(newDate), guests: r.guests })),
+    });
+
+    await tx.bookingGuest.deleteMany({ where: { bookingId } });
+    let first = true;
+    for (const g of change.guests) {
+      for (let i = 0; i < g.count; i++) {
+        await tx.bookingGuest.create({ data: { bookingId, ageBandName: g.band, isLead: first } });
+        first = false;
+      }
+    }
+
+    await tx.booking.update({
+      where: { id: bookingId },
+      data: {
+        tripDate: dbDate(newDate),
+        balanceDueAt: b.paymentOption === "ADVANCE" ? balanceDeadline(newDate, cfg.settings) : null,
+      },
+    });
+
+    const fresh = await lockBooking(tx, bookingId);
+    const oldTotal = b.invoices[0]?.total ?? null;
+    let newTotal = Math.max(0, quote.total + discounts.reduce((n, l) => n + l.total, 0));
+    if (fresh.invoices[0]) {
+      const inv = await issueInvoice(tx, fresh, { now, dueNowAt: fresh.invoices[0].dueNowAt });
+      newTotal = inv.total;
+      // Status follows the revised amount (R-04: re-quote when dates/rates move).
+      const paid = await paidAmount(tx, bookingId);
+      if (b.status === "CONFIRMED_PAID" && paid < inv.total) {
+        await tx.booking.update({ where: { id: bookingId }, data: { status: "CONFIRMED_BALANCE_DUE" } });
+      } else if (b.status === "CONFIRMED_BALANCE_DUE" && paid >= inv.total) {
+        await tx.booking.update({ where: { id: bookingId }, data: { status: "CONFIRMED_PAID" } });
+      }
+    }
+    await audit(tx, bookingId, "CHANGED", actor, {
+      before: { tripDate: oldDate, total: oldTotal },
+      after: { tripDate: newDate, total: newTotal, cabins: rows.map((r) => r.cabinId) },
+    });
+    return { total: newTotal, previousTotal: oldTotal };
+  });
 }

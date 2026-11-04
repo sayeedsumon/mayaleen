@@ -165,3 +165,53 @@ export async function blockDateAction(form: FormData) {
   }
   redirect(back);
 }
+
+export async function changeBookingAction(id: string, form: FormData) {
+  const user = await requireUser("MANAGE_BOOKINGS");
+  const bands = await prisma.ageBand.findMany({ orderBy: { minAge: "desc" } });
+  const names = bands.map((b) => b.name);
+  const b = await prisma.booking.findUniqueOrThrow({ where: { id } });
+  const cabinIds = form.getAll("cabin").map(String);
+  try {
+    await wf.changeBooking(id, {
+      tripDate: str(form, "tripDate") || undefined,
+      guests: guestsFromForm(form, "g", names),
+      foodGuests: b.type === "FULL_BOAT" ? guestsFromForm(form, "f", names) : undefined,
+      cabinIds: b.type === "SHARED" ? cabinIds : undefined,
+      guestsPerCabin: b.type === "SHARED" ? Object.fromEntries(cabinIds.map((c) => [c, int(form, `cg_${c}`)])) : undefined,
+    }, user.id);
+  } catch (e) {
+    fail(`/admin/bookings/${id}/edit`, e);
+  }
+  revalidatePath(`/admin/bookings/${id}`);
+  redirect(`/admin/bookings/${id}`);
+}
+
+// ---------- settings (admin only) ----------
+
+export async function saveBankAccountAction(form: FormData) {
+  const user = await requireUser("ADMIN_SETTINGS");
+  const data = {
+    bank: str(form, "bank"), branch: str(form, "branch"), accountName: str(form, "accountName"),
+    accountNo: str(form, "accountNo"), routingNo: str(form, "routingNo"),
+  };
+  const id = str(form, "id");
+  try {
+    if (Object.values(data).some((v) => !v)) throw new RuleError("REQUIRED", "All bank fields are required");
+    const makeDefault = str(form, "isDefault") === "on";
+    const acct = id
+      ? await prisma.bankAccount.update({ where: { id }, data: { ...data, active: str(form, "active") === "on" } })
+      : await prisma.bankAccount.create({ data: { ...data, isDefault: false } });
+    if (makeDefault) {
+      await prisma.$transaction([
+        prisma.bankAccount.updateMany({ data: { isDefault: false } }),
+        prisma.bankAccount.update({ where: { id: acct.id }, data: { isDefault: true, active: true } }),
+      ]);
+    }
+    await prisma.auditLog.create({ data: { entity: "BankAccount", entityId: acct.id, action: id ? "UPDATED" : "CREATED", actor: user.id } });
+  } catch (e) {
+    fail("/admin/settings/bank", e);
+  }
+  revalidatePath("/admin/settings/bank");
+  redirect("/admin/settings/bank");
+}

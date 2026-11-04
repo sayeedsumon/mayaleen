@@ -6,11 +6,14 @@ import { can } from "../../../../../server/auth/permissions";
 import { prisma } from "../../../../../server/db";
 import { bookingDetail } from "../../../../../server/queries";
 import { duplicateTxn } from "../../../../../server/workflow-service";
+import { decryptField } from "../../../../../server/crypto";
 import * as A from "../../../actions";
 
 function Reason({ name = "reason", required = true }: { name?: string; required?: boolean }) {
   return <input name={name} required={required} placeholder="Reason" className={`${inputCls} max-w-xs`} />;
 }
+
+const CHANGEABLE = ["PENDING_APPROVAL", "AWAITING_PAYMENT", "CONFIRMED_BALANCE_DUE", "CONFIRMED_PAID"];
 
 export default async function BookingPage({
   params, searchParams,
@@ -21,6 +24,8 @@ export default async function BookingPage({
   const b = await bookingDetail(id);
   if (!b) notFound();
   const manage = can(user.role, "MANAGE_BOOKINGS");
+  const leadNid = decryptField(b.leadGuest.nid);
+  if (leadNid) await prisma.auditLog.create({ data: { entity: "Booking", entityId: id, action: "NID_VIEW", actor: user.id } }); // FR-A27
   const inv = b.invoices[0];
   const payments = b.invoices.flatMap((i) => i.payments.map((p) => ({ ...p, invoiceNumber: i.number })));
   const dupes = new Map(await Promise.all(payments.filter((p) => p.status === "SUBMITTED").map(async (p) => [p.id, await duplicateTxn(p.id)] as const)));
@@ -35,6 +40,8 @@ export default async function BookingPage({
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-semibold">{b.reference}</h1>
         <StatusBadge status={s} />
+        {manage && CHANGEABLE.includes(s) && <a href={`/admin/bookings/${id}/edit`} className="text-sm underline">Edit booking</a>}
+        {inv && <a href={`/admin/invoices/${inv.id}`} className="text-sm underline">View invoice</a>}
         <span className="text-sm text-slate-600">{b.type === "FULL_BOAT" ? "Full boat" : "Shared"} · {fmtDate(b.tripDate)} · {b.source.toLowerCase().replace("_", "-")}</span>
       </div>
       <ErrorBanner message={error} />
@@ -43,7 +50,7 @@ export default async function BookingPage({
         <Card title="Lead guest">
           <p className="font-medium">{b.leadGuest.name}</p>
           <p className="text-sm">{b.leadGuest.mobile}{b.leadGuest.email && ` · ${b.leadGuest.email}`}</p>
-          <p className="text-sm text-slate-600">NID: {b.leadGuest.nid ?? "-"}</p>
+          <p className="text-sm text-slate-600">NID: {leadNid ?? "-"}</p>
           {b.notes && <p className="mt-2 text-sm">Notes: {b.notes}</p>}
           <p className="mt-2 text-xs text-slate-500">Guest link: /booking/{b.accessToken}</p>
         </Card>
@@ -164,7 +171,7 @@ export default async function BookingPage({
             {Array.from({ length: Math.max(adults, 1) }, (_, k) => (
               <div key={k} className="grid gap-2 md:grid-cols-2">
                 <input name={`name${k}`} required placeholder={`Adult ${k + 1} name`} defaultValue={k === 0 ? b.leadGuest.name : ""} className={inputCls} />
-                <input name={`nid${k}`} required placeholder="NID or passport" defaultValue={k === 0 ? b.leadGuest.nid ?? "" : ""} className={inputCls} />
+                <input name={`nid${k}`} required placeholder="NID or passport" defaultValue={k === 0 ? leadNid ?? "" : ""} className={inputCls} />
               </div>
             ))}
             <p className="text-xs text-slate-500">Booked with {adults} adult(s). Change the count in the booking first if more arrive.</p>

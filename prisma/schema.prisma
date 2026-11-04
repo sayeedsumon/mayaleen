@@ -179,11 +179,13 @@ model Guest {
   name             String
   mobile           String
   email            String?
-  nid              String?
+  nid              String? // encrypted (AES-256-GCM), see src/server/crypto.ts
+  nidHash          String? // keyed blind index for exact-match search
   emergencyContact String?
   bookings         Booking[]
 
   @@index([mobile])
+  @@index([nidHash])
 }
 
 model Booking {

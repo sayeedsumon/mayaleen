@@ -167,3 +167,61 @@ describe("cancel, refunds, food, deadlines", () => {
     expect(actions).toEqual(["CREATED", "APPROVE", "CANCEL"]);
   });
 });
+
+describe("changeBooking (FR-A08)", () => {
+  const cabs = async () => (await prisma.cabin.findMany({ orderBy: { sortOrder: "asc" } })).map((c) => c.id);
+
+  it("moves a full-boat booking to a new date, re-prices, revises the invoice", async () => {
+    const b = await fullBoat("2026-12-08", 8); // Tue: 55,000 + food
+    const inv = await wf.approveBooking(b.id, "m", { paymentOption: "FULL", now: NOW });
+    expect(inv.total).toBe(75000);
+    const r = await wf.changeBooking(b.id, { tripDate: "2026-12-11", guests: adults(8), foodGuests: adults(8) }, "m", NOW); // Fri: 75,000 + food
+    expect(r).toEqual({ total: 95000, previousTotal: 75000 });
+    const nights = await prisma.cabinNight.findMany({ where: { bookingId: b.id } });
+    expect(nights).toHaveLength(4);
+    expect(nights.every((n) => n.tripDate.toISOString().startsWith("2026-12-11"))).toBe(true);
+    const invs = await prisma.invoice.findMany({ where: { bookingId: b.id }, orderBy: { revision: "asc" } });
+    expect(invs.map((i) => [i.revision, i.status, i.total])).toEqual([[1, "SUPERSEDED", 75000], [2, "ISSUED", 95000]]);
+  });
+
+  it("refuses a move onto a date that is taken, and leaves the booking untouched", async () => {
+    await fullBoat("2026-12-09", 4);
+    const b = await fullBoat("2026-12-08", 4);
+    await expect(wf.changeBooking(b.id, { tripDate: "2026-12-09", guests: adults(4), foodGuests: [] }, "m", NOW)).rejects.toMatchObject({ code: "UNAVAILABLE" });
+    const nights = await prisma.cabinNight.findMany({ where: { bookingId: b.id } });
+    expect(nights).toHaveLength(4);
+    expect(nights[0].tripDate.toISOString().startsWith("2026-12-08")).toBe(true);
+  });
+
+  it("can change guests on the same date without clashing with itself", async () => {
+    const [c1, c2, c3] = await cabs();
+    const b = await createBooking({
+      type: "SHARED", tripDate: "2026-12-08", channel: "ONLINE", lead, guests: adults(4),
+      cabinIds: [c1, c2], guestsPerCabin: { [c1]: 2, [c2]: 2 }, now: NOW,
+    });
+    const r = await wf.changeBooking(b.id, { guests: adults(6), cabinIds: [c1, c2, c3], guestsPerCabin: { [c1]: 2, [c2]: 2, [c3]: 2 } }, "m", NOW);
+    expect(r.total).toBe(6 * 7800);
+    expect(await prisma.cabinNight.count({ where: { bookingId: b.id } })).toBe(3);
+  });
+
+  it("paid booking with a higher new total goes back to balance due", async () => {
+    const b = await fullBoat("2026-12-08", 8);
+    const inv = await wf.approveBooking(b.id, "m", { paymentOption: "FULL", now: NOW });
+    await wf.recordManualPayment(b.id, { amount: inv.total }, "m", NOW);
+    expect(await status(b.id)).toBe("CONFIRMED_PAID");
+    await wf.changeBooking(b.id, { tripDate: "2026-12-11", guests: adults(8), foodGuests: adults(8) }, "m", NOW);
+    expect(await status(b.id)).toBe("CONFIRMED_BALANCE_DUE");
+    const left = await prisma.$transaction(async (tx) => 95000 - (await wf.paidAmount(tx, b.id)));
+    expect(left).toBe(20000);
+  });
+
+  it("discount lines survive a change; closed bookings cannot change", async () => {
+    const b = await fullBoat("2026-12-08", 8);
+    await prisma.bookingLine.create({ data: { bookingId: b.id, kind: "DISCOUNT", description: "Discount: repeat", qty: 1, unitPrice: -5000, total: -5000 } });
+    await wf.approveBooking(b.id, "m", { now: NOW });
+    const r = await wf.changeBooking(b.id, { guests: adults(8), foodGuests: adults(4) }, "m", NOW);
+    expect(r.total).toBe(55000 + 4 * 2500 - 5000);
+    await wf.cancelBooking(b.id, "m", "x");
+    await expect(wf.changeBooking(b.id, { guests: adults(8), foodGuests: [] }, "m", NOW)).rejects.toMatchObject({ code: "BAD_STATE" });
+  });
+});

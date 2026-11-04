@@ -1,6 +1,7 @@
 import type { BookingStatus, Prisma } from "@prisma/client";
 import { addDays, availabilityFor, toDhakaDate, type BookingType, type DateMode, type ISODate } from "@/domain";
 import { dbDate, iso, loadCabins } from "./config";
+import { blindIndex } from "./crypto";
 import { prisma } from "./db";
 import { paidAmount } from "./workflow-service";
 
@@ -135,7 +136,7 @@ export async function searchBookings(s: BookingSearch) {
         { reference: { contains: q, mode: "insensitive" } },
         { leadGuest: { name: { contains: q, mode: "insensitive" } } },
         { leadGuest: { mobile: { contains: q } } },
-        { leadGuest: { nid: { contains: q } } },
+        { leadGuest: { nidHash: blindIndex(q) } }, // exact NID match only
       ],
     }),
   };
