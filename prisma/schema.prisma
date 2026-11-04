@@ -4,7 +4,8 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  url       = env("DATABASE_URL") // pooled connection at runtime
+  directUrl = env("DIRECT_URL") // direct connection for schema changes (Neon)
 }
 
 // All money is stored as whole Taka (BDT) integers.

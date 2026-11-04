@@ -30,6 +30,7 @@ console.log("2/5 Writing .env...");
 if (!existsSync(".env")) {
   const env = [
     'DATABASE_URL="postgresql://mayaleen:mayaleen@localhost:5432/mayaleen"',
+    'DIRECT_URL="postgresql://mayaleen:mayaleen@localhost:5432/mayaleen"',
     `SESSION_SECRET="${randomBytes(32).toString("hex")}"`,
     `FIELD_ENCRYPTION_KEY="${randomBytes(32).toString("hex")}"`,
     "",
