@@ -19,6 +19,16 @@
   .input { @apply h-10 w-full rounded-lg border border-field bg-white px-3 text-sm text-ink placeholder:text-ink-muted; }
   .label { @apply flex flex-col gap-1.5 text-[13px] font-medium text-ink-2; }
   .eyebrow { @apply text-[13px] font-medium text-ink-muted; }
+  /* Public website */
+  .s-wrap { @apply mx-auto w-full max-w-[1320px] px-4 md:px-10; }
+  .s-eyebrow { @apply text-xs font-semibold uppercase tracking-[2.6px] text-pine-2 md:text-[13px] md:tracking-[3px]; }
+  .s-eyebrow-light { @apply text-xs font-semibold uppercase tracking-[2.6px] text-gold md:text-[13px] md:tracking-[3px]; }
+  .s-h2 { @apply text-[36px] font-light leading-[1.08] tracking-[-0.5px] md:text-[56px] md:leading-[1.05] md:tracking-[-1px]; }
+  .s-btn { @apply inline-flex h-12 items-center justify-center gap-2 rounded-full bg-pine px-6 text-[15px] font-semibold text-white no-underline hover:bg-pine-2 hover:text-white disabled:cursor-not-allowed disabled:opacity-50; }
+  .s-btn-light { @apply inline-flex h-12 items-center justify-center gap-2 rounded-full bg-white px-6 text-[15px] font-semibold text-pine no-underline hover:bg-dune hover:text-pine; }
+  .s-btn-outline { @apply inline-flex h-12 items-center justify-center gap-2 rounded-full border border-white/60 px-6 text-[15px] font-semibold text-white no-underline hover:bg-white/10 hover:text-white; }
+  .s-dark :is(h1, h2, h3) { @apply text-white; }
+  .s-input { @apply h-[50px] w-full rounded-[14px] border border-[#D8D0C1] bg-white px-4 text-base text-ink placeholder:text-ink-muted; }
   .h1 { @apply font-display text-[32px] font-semibold leading-tight; }
   .tabnum { font-variant-numeric: tabular-nums; }
 }

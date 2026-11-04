@@ -1,5 +1,6 @@
 import { addMonths, toDhakaDate } from "@/domain";
 import { DICT } from "@/lib/i18n";
+import { getSitePhotos } from "@/server/photos";
 import { publicMonth, sweepHolds } from "@/server/queries";
 import { getContent, getLang } from "@/server/site-content";
 import { BookBoard } from "./board";
@@ -14,13 +15,14 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
   await sweepHolds();
   const today = toDhakaDate(new Date());
   const month = /^\d{4}-\d{2}$/.test(sp.month ?? "") ? sp.month! : /^\d{4}-\d{2}-\d{2}$/.test(sp.date ?? "") ? sp.date!.slice(0, 7) : today.slice(0, 7);
-  const [data, c] = await Promise.all([publicMonth(month), getContent(lang)]);
+  const [data, c, photos] = await Promise.all([publicMonth(month), getContent(lang), getSitePhotos()]);
   const t = DICT[lang];
   const display = lang === "bn" ? "font-bnDisplay" : "font-display";
   return (
-    <main className="mx-auto max-w-[1200px] px-4 pb-16 pt-8 md:px-8 md:pt-9">
-      <h1 className={`text-[34px] font-medium md:text-[42px] ${display}`}>{t.book.title}</h1>
-      <p className="mt-2 text-base text-ink-2">{t.book.lead}</p>
+    <main className="s-wrap pb-6 pt-10 md:pt-14">
+      <div className="s-eyebrow">{t.nav.bookNow}</div>
+      <h1 className={`mt-3 text-[40px] font-light leading-[1.05] tracking-[-0.5px] md:mt-3.5 md:text-[64px] md:leading-[1.02] md:tracking-[-1.5px] ${display}`}>{t.book.title}</h1>
+      <p className="mt-3 text-[17px] text-ink-2 md:mt-4">{t.book.lead}</p>
       <BookBoard
         key={`${month}-${sp.date ?? ""}-${sp.type ?? ""}`}
         lang={lang}
@@ -37,6 +39,8 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
         error={sp.error}
         taken={sp.taken ? sp.taken.split(",").filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x)) : sp.taken === "none" ? [] : null}
         phone={c.phone}
+        cabinPics={photos.cabins}
+        summaryPic={photos.hero}
       />
     </main>
   );

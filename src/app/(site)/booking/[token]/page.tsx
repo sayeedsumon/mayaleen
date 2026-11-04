@@ -52,10 +52,10 @@ export default async function MyBooking({ params, searchParams }: {
   }[s as string] ?? [t.closed, "", "bg-rose-soft text-rose-ink"];
 
   return (
-    <main className="mx-auto flex max-w-[640px] flex-col gap-4 px-4 pb-16 pt-6">
+    <main className="mx-auto flex max-w-[680px] flex-col gap-4 px-4 pb-16 pt-10 md:pt-14">
       {sp.new && (
-        <section className="card flex flex-col gap-3 p-5">
-          <h1 className={`text-[28px] font-medium leading-tight ${display}`}>{DICT[lang].req.title}</h1>
+        <section className="rounded-3xl border border-dune-line bg-white flex flex-col gap-3 p-5">
+          <h1 className={`text-[30px] font-light leading-tight md:text-[40px] ${display}`}>{DICT[lang].req.title}</h1>
           <p className="text-[15px] leading-6 text-ink-2">{fill(DICT[lang].req.lead, { mobile: b.leadGuest.mobile })}</p>
           <ol className="list-decimal pl-5 text-[15px] leading-[26px] text-ink-2">{DICT[lang].req.nextSteps.map((x) => <li key={x}>{x}</li>)}</ol>
           <p className="text-[13px] text-ink-muted">{DICT[lang].req.save}</p>
@@ -87,7 +87,7 @@ export default async function MyBooking({ params, searchParams }: {
       </section>
 
       {s === "AWAITING_PAYMENT" && inv && (
-        <section id="pay" aria-labelledby="pay-h" className="card flex flex-col gap-3 p-4">
+        <section id="pay" aria-labelledby="pay-h" className="rounded-3xl border border-dune-line bg-white flex flex-col gap-3 p-4">
           <h2 id="pay-h" className="text-[17px] font-semibold">{t.howPay}</h2>
           <form action={choosePaymentAction.bind(null, token)} className="flex flex-col gap-2">
             {(["ADVANCE", "FULL"] as const).map((o) => {
@@ -110,7 +110,7 @@ export default async function MyBooking({ params, searchParams }: {
       )}
 
       {needsPay && bank && (
-        <section aria-labelledby="bank-h" className="card p-4">
+        <section aria-labelledby="bank-h" className="rounded-3xl border border-dune-line bg-white p-4">
           <h2 id="bank-h" className="mb-1 text-[17px] font-semibold">{fill(t.sendTo, { amount: money(amountNow, lang) })}</h2>
           <p className="mb-1.5 text-[13px] text-ink-2">{t.sendHow}</p>
           {([[t.bank, `${bank.bank}, ${bank.branch}`, false], [t.accountName, bank.accountName, true], [t.accountNo, bank.accountNo, true], [t.routing, bank.routingNo, true]] as const).map(([k, v, copy]) => (
@@ -124,7 +124,7 @@ export default async function MyBooking({ params, searchParams }: {
       )}
 
       {needsPay && inv && (
-        <form id="proof" action={uploadProofAction.bind(null, token)} aria-labelledby="up-h" className="card flex flex-col gap-3 p-4">
+        <form id="proof" action={uploadProofAction.bind(null, token)} aria-labelledby="up-h" className="rounded-3xl border border-dune-line bg-white flex flex-col gap-3 p-4">
           <h2 id="up-h" className="text-[17px] font-semibold">{t.proofTitle}</h2>
           <div className="absolute left-[-9999px]" aria-hidden="true"><label>Website<input name="website" tabIndex={-1} autoComplete="off" /></label></div>
           <label className="label">{t.amountSent}<input name="amount" required inputMode="numeric" defaultValue={amountNow || ""} className="input h-12 text-base" /></label>
@@ -145,13 +145,13 @@ export default async function MyBooking({ params, searchParams }: {
             <span className="text-xs text-ink-2">{t.screenshotHint}</span>
             <input type="file" name="file" accept="image/jpeg,image/png,application/pdf" className="mt-1 w-full max-w-[260px] text-sm" />
           </label>
-          <button className="btn h-[52px] text-base">{t.sendProof}</button>
+          <button className="s-s-btn h-[52px] text-base">{t.sendProof}</button>
           <p className="text-center text-xs text-ink-muted">{t.pauseNote}</p>
         </form>
       )}
 
       {inv && (
-        <section id="payments" aria-labelledby="pr-h" className="card p-4">
+        <section id="payments" aria-labelledby="pr-h" className="rounded-3xl border border-dune-line bg-white p-4">
           <h2 id="pr-h" className="mb-1 text-[17px] font-semibold">{t.payments}</h2>
           {payments.map((p) => (
             <div key={p.id} className="flex items-start justify-between gap-2.5 border-t border-hair py-2.5 text-[15px]">
