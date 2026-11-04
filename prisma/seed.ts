@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { hashPassword } from "../src/server/auth/password";
 import { DEFAULT_AGE_BANDS, DEFAULT_RATES, DEFAULT_SETTINGS } from "../src/domain/defaults";
 
 const prisma = new PrismaClient();
@@ -48,6 +49,14 @@ async function main() {
   ];
   for (const [d, name] of holidays) {
     await prisma.holiday.upsert({ where: { date: new Date(`${d}T00:00:00Z`) }, update: {}, create: { date: new Date(`${d}T00:00:00Z`), name } });
+  }
+  // First admin. Set ADMIN_PASSWORD in production; the dev default is for local use only.
+  if ((await prisma.user.count()) === 0) {
+    const pw = process.env.ADMIN_PASSWORD ?? "changeme-dev";
+    await prisma.user.create({
+      data: { name: "Owner", mobile: process.env.ADMIN_MOBILE ?? "01700000000", role: "ADMIN", pwHash: hashPassword(pw) },
+    });
+    console.log(`Created admin ${process.env.ADMIN_MOBILE ?? "01700000000"}${process.env.ADMIN_PASSWORD ? "" : " with the DEV default password: change it"}`);
   }
   if ((await prisma.bankAccount.count()) === 0) {
     await prisma.bankAccount.create({
