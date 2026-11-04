@@ -5,6 +5,14 @@ Booking, reservation and management system plus public website for the Mayaleen 
 
 ## Local setup
 
+Easiest (needs Node 20+ and Docker running):
+
+```bash
+npm run setup && npm run dev
+```
+
+Then open http://localhost:3000/admin/login. Manual steps:
+
 ```bash
 npm install
 docker compose up -d db          # or any Postgres 16
