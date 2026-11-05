@@ -30,6 +30,13 @@ interface Props {
   data: CalendarData; today: string; initialDay: string; initialCabins: string[]; prevMonth: string; nextMonth: string; canManage: boolean; canCreate: boolean;
 }
 
+/** Short price for narrow phone cells: 7800 → "7.8k", 55000 → "55k". */
+function shortTk(n: number) {
+  if (n < 1000) return String(n);
+  const k = n / 1000;
+  return `${k >= 10 ? Math.round(k) : Math.round(k * 10) / 10}k`;
+}
+
 export function CalendarBoard({ data, today, initialDay, initialCabins, prevMonth, nextMonth, canManage, canCreate }: Props) {
   const cfg: PricingConfig = useMemo(() => ({ ...data.pricing, holidays: new Set(data.pricing.holidays) }), [data]);
   const active = data.cabins.filter((c) => c.active);
@@ -168,8 +175,8 @@ export function CalendarBoard({ data, today, initialDay, initialCabins, prevMont
             <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-[#B03A2E]" />Holiday</span>
             <span className="ml-auto text-ink-muted">Price shown per guest, shared cabins</span>
           </div>
-          <div className="grid grid-cols-7 gap-1.5">
-            {WD.map((w) => <div key={w} className="px-1.5 pb-1.5 text-xs font-semibold text-ink-muted">{w}</div>)}
+          <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
+            {WD.map((w) => <div key={w} className="min-w-0 px-1 pb-1.5 text-xs font-semibold text-ink-muted sm:px-1.5">{w}</div>)}
             {Array.from({ length: lead }, (_, k) => <div key={`b${k}`} />)}
             {cells.map((c) => {
               const on = c.d.date === day;
@@ -180,13 +187,18 @@ export function CalendarBoard({ data, today, initialDay, initialCabins, prevMont
                   onClick={() => pick(c.d.date)}
                   aria-pressed={on}
                   aria-label={`${Number(c.d.date.slice(8))} ${MONTHS[m - 1]}, ${c.label}${c.d.holiday ? `, ${c.d.holiday}` : ""}`}
-                  className={`flex min-h-[96px] flex-col gap-1 rounded-[10px] p-2 text-left text-ink hover:border-[#9DB9B4] ${c.bg} ${on ? "border-2 border-lake" : "border border-line"}`}
+                  className={`flex min-h-[84px] min-w-0 flex-col gap-0.5 overflow-hidden rounded-[10px] p-1.5 text-left text-ink hover:border-[#9DB9B4] sm:min-h-[96px] sm:gap-1 sm:p-2 ${c.bg} ${on ? "border-2 border-lake" : "border border-line"}`}
                 >
-                  <span className="flex items-baseline justify-between gap-1">
-                    <span className="text-[15px] font-semibold">{Number(c.d.date.slice(8))}</span>
-                    {!c.i.past && <span className="text-[11px] text-ink-muted">{tk(c.price).replace(" ", " ")}</span>}
+                  <span className="flex min-w-0 flex-col gap-0.5">
+                    <span className="text-[15px] font-semibold leading-tight">{Number(c.d.date.slice(8))}</span>
+                    {!c.i.past && (
+                      <span className="truncate text-[10px] leading-tight text-ink-muted sm:text-[11px]">
+                        <span className="xl:hidden">{shortTk(c.price)}</span>
+                        <span className="hidden whitespace-nowrap xl:inline">{tk(c.price)}</span>
+                      </span>
+                    )}
                   </span>
-                  <span className={`flex items-center gap-1 text-xs font-medium ${c.tone}`}>
+                  <span className={`flex min-w-0 items-center gap-1 text-[11px] font-medium sm:text-xs ${c.tone}`}>
                     {c.d.holiday && <span title={c.d.holiday} className="h-2 w-2 flex-none rounded-full bg-[#B03A2E]" />}
                     <span className="truncate">{c.label}</span>
                   </span>
