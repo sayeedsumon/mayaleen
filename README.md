@@ -3,6 +3,9 @@
 Booking, reservation and management system plus public website for the Mayaleen houseboat
 (Kaptai Lake). See [docs/PLAN.md](docs/PLAN.md) for the phased build plan.
 
+**Installing?** Step-by-step guide for non-coders (your computer, cPanel, VPS): [docs/INSTALL.md](docs/INSTALL.md).
+Hosting on Vercel + Neon: [docs/DEPLOY.md](docs/DEPLOY.md).
+
 ## Local setup
 
 Easiest (needs Node 20+ and Docker running):
