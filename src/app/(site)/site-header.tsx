@@ -8,6 +8,7 @@ type Props = {
   lang: "en" | "bn";
   display: string;
   name: string;
+  logo: { src: string; alt: string } | null;
   links: [string, string][];
   myBooking: string;
   bookNow: string;
@@ -17,7 +18,7 @@ type Props = {
 /** Pages that open with a full-bleed photo get a transparent header laid over it. */
 const OVERLAY = new Set(["/", "/boat"]);
 
-export function SiteHeader({ lang, display, name, links, myBooking, bookNow, menu }: Props) {
+export function SiteHeader({ lang, display, name, logo, links, myBooking, bookNow, menu }: Props) {
   const path = usePathname();
   const overlay = OVERLAY.has(path);
   const ink = overlay ? "text-white hover:text-white" : "text-ink hover:text-pine";
@@ -25,7 +26,10 @@ export function SiteHeader({ lang, display, name, links, myBooking, bookNow, men
   return (
     <header className={overlay ? "absolute inset-x-0 top-0 z-20" : "border-b border-dune-line bg-mist"}>
       <div className="s-wrap flex items-center gap-6 py-4 md:gap-9 md:py-6">
-        <a href="/" className={`text-[24px] no-underline md:text-[28px] ${display} ${overlay ? "text-white hover:text-white" : "text-pine hover:text-pine"}`}>{name}</a>
+        <a href="/" className={`text-[24px] no-underline md:text-[28px] ${display} ${overlay ? "text-white hover:text-white" : "text-pine hover:text-pine"}`}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {logo ? <img src={logo.src} alt={name} className="h-9 w-auto max-w-[180px] object-contain md:h-11" /> : name}
+        </a>
         <nav aria-label="Main" className="hidden flex-1 flex-wrap gap-7 text-sm font-medium lg:flex">
           {links.map(([href, label]) => (
             <a key={href} href={href} aria-current={path === href ? "page" : undefined}

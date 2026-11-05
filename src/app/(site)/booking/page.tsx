@@ -1,8 +1,12 @@
+import type { Metadata } from "next";
 import { DICT } from "@/lib/i18n";
 import { getContent, getLang } from "@/server/site-content";
 import { findBookingAction } from "../actions";
 
-export const metadata = { title: "Find my booking · Mayaleen" };
+export async function generateMetadata(): Promise<Metadata> {
+  const c = await getContent(await getLang());
+  return { title: `${c.findTitle} · ${c.siteName}` };
+}
 
 const COPY = {
   en: { title: "Find my booking", lead: "Enter your booking reference and mobile number. We'll text the private link to that number.", ref: "Booking reference", mobile: "Mobile number", send: "Text me the link", sent: "If the details match a booking, we've sent the link by SMS. It can take a minute.", help: "No SMS? Call us" },
@@ -16,8 +20,8 @@ export default async function FindBooking({ searchParams }: { searchParams: Prom
   const c = await getContent(lang);
   return (
     <main className="mx-auto flex max-w-md flex-col gap-4 px-4 pb-10 pt-12 md:pt-16">
-      <h1 className={`text-[32px] font-light leading-tight tracking-[-0.5px] md:text-[48px] ${lang === "bn" ? "font-bnDisplay" : "font-display"}`}>{k.title}</h1>
-      <p className="text-[15px] text-ink-2">{k.lead}</p>
+      <h1 className={`text-[32px] font-light leading-tight tracking-[-0.5px] md:text-[48px] ${lang === "bn" ? "font-bnDisplay" : "font-display"}`}>{c.findTitle}</h1>
+      {c.findLead && <p className="text-[15px] text-ink-2">{c.findLead}</p>}
       {sp.sent && <p role="status" className="rounded-xl bg-lake-soft px-4 py-3 text-sm text-lake-dark">{k.sent}</p>}
       {sp.error && <p role="alert" className="rounded-xl bg-rose-soft px-4 py-3 text-sm text-rose-ink">{sp.error}</p>}
       <form action={findBookingAction} className="rounded-3xl border border-dune-line bg-white flex flex-col gap-3 p-5">

@@ -1,12 +1,33 @@
 import { prisma } from "@/server/db";
 
-export const PLACES = ["HERO", "BOAT", "CABIN", "GALLERY"] as const;
+export const PLACES = ["LOGO", "HERO", "INTRO", "SHARED", "WHOLE", "ONBOARD", "GALLERY", "REACH", "BOAT", "CABIN", "BOOK"] as const;
 export type Place = (typeof PLACES)[number];
 export const PLACE_LABEL: Record<Place, string> = {
-  HERO: "Home page – top picture",
+  LOGO: "Logo (header)",
+  HERO: "Home – top picture",
+  INTRO: "Home – welcome pictures",
+  SHARED: "Home – shared cabins card",
+  WHOLE: "Home – whole boat card",
+  ONBOARD: "Home – “On board” picture",
+  GALLERY: "Home – gallery",
+  REACH: "Home – “How to reach” background",
   BOAT: "Boat page – top picture",
-  CABIN: "Cabin cards",
-  GALLERY: "Home page gallery",
+  CABIN: "Boat & booking pages – cabin pictures",
+  BOOK: "Booking page – trip summary picture",
+};
+/** How each place uses its photos (shown in Settings › Website photos). */
+export const PLACE_NOTE: Record<Place, string> = {
+  LOGO: "Optional. Replaces the written name in the header. Use a wide PNG with a transparent background. On the home and boat pages it sits over the top photo, so a white or light logo reads best.",
+  HERO: "The first photo is shown, full screen.",
+  INTRO: "The first photo is the large one, the second the small one in front.",
+  SHARED: "The first photo is shown.",
+  WHOLE: "The first photo is shown.",
+  ONBOARD: "The first photo is shown.",
+  GALLERY: `Up to 9 are shown; the first one is large.`,
+  REACH: "The first photo is shown behind the text.",
+  BOAT: "The first photo is shown, full width.",
+  CABIN: "Used in turn: the first for the first cabin type, the second for the next, and so on.",
+  BOOK: "The first photo is shown above the trip summary.",
 };
 export const FOCUS = { top: "50% 15%", center: "50% 50%", bottom: "50% 85%" } as const;
 export type Focus = keyof typeof FOCUS;
@@ -24,7 +45,10 @@ const D = {
   lounge: { src: "/photos/lounge.jpg", alt: "The lounge on board", pos: "50% 30%" },
 } satisfies Record<string, SitePic>;
 
-export type SitePhotos = { hero: SitePic; boat: SitePic; cabins: SitePic[]; gallery: SitePic[]; reach: SitePic };
+export type SitePhotos = {
+  logo: SitePic | null; hero: SitePic; intro: [SitePic, SitePic]; shared: SitePic; whole: SitePic; onboard: SitePic;
+  gallery: SitePic[]; reach: SitePic; boat: SitePic; cabins: SitePic[]; book: SitePic;
+};
 
 /** Photos for the public site: uploaded ones per place, falling back to the built-in set. */
 export async function getSitePhotos(): Promise<SitePhotos> {
@@ -36,13 +60,19 @@ export async function getSitePhotos(): Promise<SitePhotos> {
   }
   const pic = (r: { id: string; alt: string; focus: string }): SitePic => ({ src: `/img/${r.id}`, alt: r.alt || "Mayaleen houseboat on Kaptai Lake", pos: FOCUS[r.focus as Focus] ?? FOCUS.center });
   const at = (p: Place) => rows.filter((r) => r.place === p).map(pic);
-  const hero = at("HERO"), boat = at("BOAT"), cabins = at("CABIN"), gallery = at("GALLERY");
+  const intro = at("INTRO"), cabins = at("CABIN"), gallery = at("GALLERY");
   return {
-    hero: hero[0] ?? D.river,
-    boat: boat[0] ?? D.deck,
-    cabins: cabins.length ? cabins : [D.cabin, D.lounge],
+    logo: at("LOGO")[0] ?? null,
+    hero: at("HERO")[0] ?? D.river,
+    intro: [intro[0] ?? D.deck, intro[1] ?? D.swim],
+    shared: at("SHARED")[0] ?? D.cabin,
+    whole: at("WHOLE")[0] ?? D.deck,
+    onboard: at("ONBOARD")[0] ?? D.swim,
     gallery: (gallery.length ? gallery : [D.deck, D.swim, D.cabin, D.lounge, D.river]).slice(0, GALLERY_MAX),
-    reach: gallery[1] ?? hero[1] ?? D.swim,
+    reach: at("REACH")[0] ?? D.deck,
+    boat: at("BOAT")[0] ?? D.deck,
+    cabins: cabins.length ? cabins : [D.cabin, D.lounge],
+    book: at("BOOK")[0] ?? D.river,
   };
 }
 

@@ -1,7 +1,7 @@
 import { Banner, Card, Empty } from "@/components/ui";
 import { requireUser } from "@/server/auth/current-user";
 import { prisma } from "@/server/db";
-import { FOCUS, type Focus, GALLERY_MAX, PLACE_LABEL, PLACES } from "@/server/photos";
+import { FOCUS, type Focus, PLACE_LABEL, PLACE_NOTE, PLACES } from "@/server/photos";
 
 const FOCUS_LABEL: [Focus, string][] = [["top", "Keep the top"], ["center", "Keep the middle"], ["bottom", "Keep the bottom"]];
 import { deletePhotoAction, movePhotoAction, updatePhotoAction } from "../../../_actions/photos";
@@ -30,11 +30,11 @@ export default async function PhotosPage({ searchParams }: { searchParams: Promi
 
       {PLACES.map((p) => {
         const list = rows.filter((r) => r.place === p);
-        const note = p === "HERO" || p === "BOAT" ? "The first photo is shown." : p === "GALLERY" ? `The first ${GALLERY_MAX} are shown; the first one is large.` : "Cabin cards use these in turn.";
+        const note = PLACE_NOTE[p];
         return (
-          <Card key={p} title={`${PLACE_LABEL[p]} · ${list.length}`}>
+          <section key={p} id={`place-${p}`} className="scroll-mt-4"><Card title={`${PLACE_LABEL[p]} · ${list.length}`}>
             <p className="-mt-1 mb-3 text-xs text-ink-muted">{note}</p>
-            {list.length === 0 ? <Empty>No photos here yet — the built-in ones are used.</Empty> : (
+            {list.length === 0 ? <Empty>{p === "LOGO" ? "No logo — the website name is shown as text." : "No photos here yet — the built-in ones are used."}</Empty> : (
               <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {list.map((r, i) => (
                   <li key={r.id} className="overflow-hidden rounded-xl border border-hair">
@@ -68,7 +68,7 @@ export default async function PhotosPage({ searchParams }: { searchParams: Promi
                 ))}
               </ul>
             )}
-          </Card>
+          </Card></section>
         );
       })}
     </div>

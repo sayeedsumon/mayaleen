@@ -160,17 +160,48 @@ export async function guestNotesAction(guestId: string, form: FormData) {
 
 export async function websiteContentAction(form: FormData) {
   const u = await requireUser("ADMIN_SETTINGS");
-  const back = "/admin/settings/website";
+  const sectionId = str(form, "section");
+  const back = `/admin/settings/website?s=${encodeURIComponent(sectionId)}`;
   try {
-    const { CONTENT_DEFAULTS } = await import("@/server/site-content");
-    for (const key of Object.keys(CONTENT_DEFAULTS)) {
-      const en = String(form.get(`${key}_en`) ?? "").trim();
-      const bn = String(form.get(`${key}_bn`) ?? "").trim();
+    const { FIELDS, SECTIONS, cleanRows } = await import("@/server/site-content");
+    const sec = SECTIONS.find((x) => x.id === sectionId);
+    if (!sec) throw new RuleError("SECTION", "Unknown section");
+    for (const key of sec.keys) {
+      const d = FIELDS[key];
+      let en = "", bn = "";
+      if (d.type === "text") {
+        en = String(form.get(`${key}_en`) ?? "").trim().slice(0, 5000);
+        bn = String(form.get(`${key}_bn`) ?? "").trim().slice(0, 5000);
+      } else if (d.type === "toggle") {
+        en = form.get(`${key}_on`) ? "1" : "0";
+      } else {
+        const enRows = cleanRows(form.get(`${key}_en`), d);
+        const bnRows = cleanRows(form.get(`${key}_bn`), d);
+        en = JSON.stringify(enRows);
+        bn = JSON.stringify(enRows.map((_, i) => bnRows[i] ?? {}));
+      }
       await prisma.siteContent.upsert({ where: { key }, update: { en, bn }, create: { key, en, bn } });
     }
-    await prisma.auditLog.create({ data: { entity: "SiteContent", entityId: "website", action: "CONTENT_SAVED", actor: u.id } });
+    await prisma.auditLog.create({ data: { entity: "SiteContent", entityId: sectionId, action: "CONTENT_SAVED", actor: u.id } });
   } catch (e) { fail(back, e); }
-  finish(back, "Website text saved. It shows on the site right away.");
+  revalidatePath("/", "layout");
+  finish(back, "Saved. The website shows it right away.");
+}
+
+/** Puts a section back to the original wording (deletes the saved values). */
+export async function resetWebsiteSectionAction(form: FormData) {
+  const u = await requireUser("ADMIN_SETTINGS");
+  const sectionId = str(form, "section");
+  const back = `/admin/settings/website?s=${encodeURIComponent(sectionId)}`;
+  try {
+    const { SECTIONS } = await import("@/server/site-content");
+    const sec = SECTIONS.find((x) => x.id === sectionId);
+    if (!sec) throw new RuleError("SECTION", "Unknown section");
+    await prisma.siteContent.deleteMany({ where: { key: { in: sec.keys } } });
+    await prisma.auditLog.create({ data: { entity: "SiteContent", entityId: sectionId, action: "CONTENT_RESET", actor: u.id } });
+  } catch (e) { fail(back, e); }
+  revalidatePath("/", "layout");
+  finish(back, "Restored the original wording for this section.");
 }
 
 export async function resendMessageAction(form: FormData) {

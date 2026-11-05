@@ -7,16 +7,18 @@ import { uploadPhotoAction } from "../../../_actions/photos";
 const MAX_EDGE = 2000;
 
 /** Shrinks a photo in the browser (also drops GPS/camera data) so uploads stay small. */
-async function shrink(file: File): Promise<{ blob: Blob; width: number; height: number }> {
+async function shrink(file: File, logo: boolean): Promise<{ blob: Blob; width: number; height: number; type: string }> {
   const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
-  const scale = Math.min(1, MAX_EDGE / Math.max(bmp.width, bmp.height));
+  // Logos keep transparency (PNG) and stay small; photos become JPEG.
+  const type = logo ? "image/png" : "image/jpeg";
+  const scale = Math.min(1, (logo ? 800 : MAX_EDGE) / Math.max(bmp.width, bmp.height));
   const width = Math.round(bmp.width * scale), height = Math.round(bmp.height * scale);
   const canvas = document.createElement("canvas");
   canvas.width = width; canvas.height = height;
   canvas.getContext("2d")!.drawImage(bmp, 0, 0, width, height);
   bmp.close();
-  const blob = await new Promise<Blob>((ok, no) => canvas.toBlob((b) => (b ? ok(b) : no(new Error("encode"))), "image/jpeg", 0.82));
-  return { blob, width, height };
+  const blob = await new Promise<Blob>((ok, no) => canvas.toBlob((b) => (b ? ok(b) : no(new Error("encode"))), type, 0.82));
+  return { blob, width, height, type };
 }
 
 export function Uploader({ places }: { places: [string, string][] }) {
@@ -35,9 +37,9 @@ export function Uploader({ places }: { places: [string, string][] }) {
     for (let i = 0; i < files.length; i++) {
       setStatus(`Uploading ${i + 1} of ${files.length}…`);
       try {
-        const { blob, width, height } = await shrink(files[i]);
+        const { blob, width, height, type } = await shrink(files[i], f.get("place") === "LOGO");
         const fd = new FormData();
-        fd.set("file", new File([blob], "photo.jpg", { type: "image/jpeg" }));
+        fd.set("file", new File([blob], type === "image/png" ? "logo.png" : "photo.jpg", { type }));
         fd.set("place", String(f.get("place")));
         fd.set("alt", String(f.get("alt") ?? ""));
         fd.set("focus", String(f.get("focus") ?? "center"));
